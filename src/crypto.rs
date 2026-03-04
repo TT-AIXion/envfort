@@ -78,7 +78,7 @@ pub struct AadData {
 
 impl AadData {
     pub fn to_aad_bytes(&self) -> Result<Vec<u8>, CryptoError> {
-        bincode::serde::encode_to_vec(self, bincode::config::standard())
+        bincode::serialize(self)
             .map_err(|err| CryptoError::AadSerialization(err.to_string()))
     }
 }
