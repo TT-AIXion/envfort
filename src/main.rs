@@ -11,12 +11,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rpassword::prompt_password;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    Commands, InitArgs, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs, SetArgs,
-    parse_cli,
+    Commands, ExportArgs, InitArgs, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs,
+    SetArgs, parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
@@ -25,6 +26,20 @@ use crate::crypto::{
 use crate::error::{CliError, KeychainError};
 use crate::keychain::{KeychainBackend, OsKeychain, get_backend};
 use crate::storage::{SecretRecord, VaultDb};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EncryptedBackupFile {
+    version: u32,
+    profile: String,
+    created_at: i64,
+    key_id: String,
+    aead_alg: String,
+    kek_id: String,
+    value_nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+    wrap_nonce: Vec<u8>,
+    wrapped_dek: Vec<u8>,
+}
 
 fn main() {
     if let Err(err) = run_main() {
@@ -48,6 +63,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::Run(args) => cmd_run(&args)?,
         Commands::Rm(args) => cmd_rm(&args)?,
         Commands::RotateKek(args) => cmd_rotate_kek(&args)?,
+        Commands::Export(args) => cmd_export(&args)?,
         Commands::Profile(args) => cmd_profile(args.command)?,
     }
 
@@ -252,6 +268,66 @@ fn cmd_rotate_kek(args: &RotateKekArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+fn cmd_export(args: &ExportArgs) -> Result<(), CliError> {
+    if !args.encrypted {
+        return Err(CliError::InvalidArgument(
+            "export requires --encrypted".to_string(),
+        ));
+    }
+
+    let db = open_default_db()?;
+    let backend = get_backend();
+    let kek = backend.retrieve_kek(&args.profile)?;
+    let db_path = default_db_path()?;
+    let mut vault_bytes = fs::read(&db_path)?;
+
+    let dek = generate_dek()?;
+    let key_id = format!("backup-{}", Uuid::new_v4());
+    let aad = AadData {
+        profile_id: args.profile.clone(),
+        key_id: key_id.clone(),
+        record_version: 1,
+        aead_alg: "AES-256-GCM-SIV".to_string(),
+        kek_id: format!("backup:{}", args.profile),
+    };
+    let (value_nonce, ciphertext) = encrypt_value(&dek, &vault_bytes, &aad)?;
+    vault_bytes.zeroize();
+
+    let (wrap_nonce, wrapped_dek) = wrap_dek(&kek, &dek, &aad)?;
+    let payload = EncryptedBackupFile {
+        version: 1,
+        profile: args.profile.clone(),
+        created_at: chrono::Utc::now().timestamp(),
+        key_id,
+        aead_alg: aad.aead_alg.clone(),
+        kek_id: aad.kek_id.clone(),
+        value_nonce,
+        ciphertext,
+        wrap_nonce,
+        wrapped_dek,
+    };
+
+    let encoded = bincode::serialize(&payload)
+        .map_err(|err| CliError::InvalidArgument(format!("backup serialization failed: {err}")))?;
+    let output_path = PathBuf::from(&args.output);
+    if let Some(parent) = output_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&output_path, encoded)?;
+    fs::set_permissions(&output_path, fs::Permissions::from_mode(0o600))?;
+
+    db.log_audit(
+        "export",
+        None,
+        Some(&args.profile),
+        Some("encrypted backup"),
+    )?;
+    println!("exported encrypted backup to {}", output_path.display());
+    Ok(())
+}
+
 fn cmd_profile(command: ProfileCommands) -> Result<(), CliError> {
     let db = open_default_db()?;
 
@@ -310,6 +386,12 @@ fn open_default_db() -> Result<VaultDb, CliError> {
     ensure_secure_dir(&data_dir)?;
     let db_path = data_dir.join("vault.db");
     Ok(VaultDb::init_db(db_path)?)
+}
+
+fn default_db_path() -> Result<PathBuf, CliError> {
+    let data_dir = envfort_data_dir()?;
+    ensure_secure_dir(&data_dir)?;
+    Ok(data_dir.join("vault.db"))
 }
 
 fn envfort_data_dir() -> Result<PathBuf, CliError> {

@@ -16,6 +16,7 @@ pub enum Commands {
     Rm(RemoveArgs),
     #[command(name = "rotate-kek")]
     RotateKek(RotateKekArgs),
+    Export(ExportArgs),
     Profile(ProfileArgs),
 }
 
@@ -57,6 +58,16 @@ pub struct RemoveArgs {
 
 #[derive(Debug, Args)]
 pub struct RotateKekArgs {
+    #[arg(long, default_value = "default")]
+    pub profile: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    #[arg(long)]
+    pub encrypted: bool,
+    #[arg(long)]
+    pub output: String,
     #[arg(long, default_value = "default")]
     pub profile: String,
 }
