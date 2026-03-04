@@ -448,4 +448,39 @@ mod tests {
                 .is_some()
         );
     }
+
+    #[test]
+    fn audit_logging_and_meta_operations() {
+        let db = VaultDb::init_in_memory().expect("init db");
+
+        db.set_meta("rotation_state", "idle").expect("set meta v1");
+        db.set_meta("rotation_state", "running")
+            .expect("set meta v2");
+        assert_eq!(
+            db.get_meta("rotation_state").expect("get meta"),
+            Some("running".to_string())
+        );
+        assert_eq!(db.get_meta("missing").expect("get missing meta"), None);
+
+        db.log_audit("set", Some("API_TOKEN"), Some("default"), Some("created"))
+            .expect("log set");
+        db.log_audit("run", None, Some("default"), Some("child started"))
+            .expect("log run");
+
+        let audit_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM audit_log", [], |row| row.get(0))
+            .expect("count audit rows");
+        assert_eq!(audit_count, 2);
+
+        let actions = db
+            .conn
+            .prepare("SELECT action FROM audit_log ORDER BY id ASC")
+            .expect("prepare action query")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query actions")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect actions");
+        assert_eq!(actions, vec!["set".to_string(), "run".to_string()]);
+    }
 }
