@@ -31,8 +31,6 @@ pub enum StorageError {
     Sqlite(#[from] rusqlite::Error),
     #[error("crypto error: {0}")]
     Crypto(#[from] CryptoError),
-    #[error("record not found: profile={profile}, key_name={key_name}")]
-    NotFound { profile: String, key_name: String },
 }
 
 #[derive(Debug, Error)]

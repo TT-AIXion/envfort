@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use chrono::Utc;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, params};
+#[cfg(test)]
+use rusqlite::OptionalExtension;
 
 use crate::error::StorageError;
 
@@ -47,6 +49,7 @@ impl VaultDb {
         Self::from_connection(conn)
     }
 
+    #[cfg(test)]
     pub fn init_in_memory() -> Result<Self, StorageError> {
         let conn = Connection::open_in_memory()?;
         Self::from_connection(conn)
@@ -136,6 +139,7 @@ impl VaultDb {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn get_secret(
         &self,
         profile: &str,
@@ -226,6 +230,7 @@ impl VaultDb {
         Ok(affected > 0)
     }
 
+    #[cfg(test)]
     pub fn get_meta(&self, key: &str) -> Result<Option<String>, StorageError> {
         let value = self
             .conn
