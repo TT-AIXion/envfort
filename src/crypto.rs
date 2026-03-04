@@ -1,3 +1,5 @@
+#![allow(clippy::upper_case_acronyms)]
+
 // main.rs で有効化:
 // mod crypto;
 

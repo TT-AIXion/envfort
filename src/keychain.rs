@@ -115,7 +115,7 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 fn decode_hex(input: &str) -> Result<Vec<u8>, KeychainError> {
     let bytes = input.as_bytes();
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return Err(KeychainError::Operation(
             "invalid hex length in keychain entry".to_string(),
         ));

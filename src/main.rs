@@ -1,7 +1,11 @@
 mod cli;
+#[allow(dead_code)]
 mod crypto;
+#[allow(dead_code)]
 mod error;
+#[allow(dead_code)]
 mod keychain;
+#[allow(dead_code)]
 mod storage;
 
 use crate::cli::{Commands, ProfileCommands, parse_cli};
