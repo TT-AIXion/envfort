@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(name = "envfort", version, about = "Secret manager CLI")]
@@ -50,6 +50,19 @@ pub struct RunArgs {
     pub command: Vec<String>,
     #[arg(long, default_value = "default")]
     pub profile: String,
+    #[arg(long, value_enum)]
+    pub inject: Option<InjectMode>,
+    #[arg(long, default_value_t = false)]
+    pub llm_safe: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum InjectMode {
+    Env,
+    Stdin,
+    Fd,
+    Socket,
+    Tmpfile,
 }
 
 #[derive(Debug, Args)]

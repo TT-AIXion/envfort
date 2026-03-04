@@ -8,7 +8,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use argon2::{Algorithm, Argon2, Params, Version};
@@ -18,8 +18,9 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, KdfArgs, KdfCalibrateArgs,
-    KdfCommands, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs, SetArgs, parse_cli,
+    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, InjectMode, KdfArgs,
+    KdfCalibrateArgs, KdfCommands, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs,
+    SetArgs, parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
@@ -164,6 +165,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
     let backend = get_backend();
     let kek = backend.retrieve_kek(&args.profile)?;
     let records = db.list_secret_records(&args.profile)?;
+    let inject_mode = resolve_inject_mode(args);
 
     let mut env_secrets: Vec<(String, Zeroizing<String>)> = Vec::with_capacity(records.len());
     for record in records {
@@ -208,13 +210,42 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
         env_secrets.push((record.key_name, value));
     }
 
-    let mut child = Command::new(program);
-    child.args(command_args);
-    for (key, value) in &env_secrets {
-        child.env(key, value.as_str());
-    }
-
-    let status = child.status()?;
+    let status = match inject_mode {
+        InjectMode::Env => {
+            let mut child = Command::new(program);
+            child.args(command_args);
+            for (key, value) in &env_secrets {
+                child.env(key, value.as_str());
+            }
+            child.status()?
+        }
+        InjectMode::Stdin => {
+            let payload = build_secret_payload(&env_secrets);
+            let mut child = Command::new(program);
+            child.args(command_args);
+            child.stdin(Stdio::piped());
+            let mut child = child.spawn()?;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(payload.as_bytes())?;
+            }
+            child.wait()?
+        }
+        InjectMode::Fd => {
+            return Err(CliError::InvalidArgument(
+                "inject mode fd not implemented yet".to_string(),
+            ));
+        }
+        InjectMode::Socket => {
+            return Err(CliError::InvalidArgument(
+                "inject mode socket not implemented yet".to_string(),
+            ));
+        }
+        InjectMode::Tmpfile => {
+            return Err(CliError::InvalidArgument(
+                "inject mode tmpfile not implemented yet".to_string(),
+            ));
+        }
+    };
     drop(env_secrets);
 
     if status.success() {
@@ -223,6 +254,25 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
 
     let code = status.code().unwrap_or(1);
     std::process::exit(code);
+}
+
+fn resolve_inject_mode(args: &RunArgs) -> InjectMode {
+    match args.inject {
+        Some(mode) => mode,
+        None if args.llm_safe => InjectMode::Fd,
+        None => InjectMode::Env,
+    }
+}
+
+fn build_secret_payload(env_secrets: &[(String, Zeroizing<String>)]) -> String {
+    let mut payload = String::new();
+    for (key, value) in env_secrets {
+        payload.push_str(key);
+        payload.push('=');
+        payload.push_str(value);
+        payload.push('\n');
+    }
+    payload
 }
 
 fn cmd_rm(args: &RemoveArgs) -> Result<(), CliError> {
