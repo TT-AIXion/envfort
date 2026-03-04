@@ -292,4 +292,24 @@ mod tests {
             assert!(seen.insert(nonce), "nonce collision detected");
         }
     }
+
+    #[test]
+    fn derive_kek_from_passphrase_roundtrip() {
+        let passphrase = "battery staple horse correct";
+        let salt = b"0123456789abcdef";
+        let aad = sample_aad();
+        let dek = generate_dek().expect("generate DEK");
+
+        let kek = derive_kek_from_passphrase(passphrase, salt).expect("derive KEK");
+        let (wrap_nonce, encrypted_dek) = wrap_dek(&kek, &dek, &aad).expect("wrap DEK");
+
+        let derived_again = derive_kek_from_passphrase(passphrase, salt).expect("derive KEK again");
+        let unwrapped =
+            unwrap_dek(&derived_again, &wrap_nonce, &encrypted_dek, &aad).expect("unwrap DEK");
+
+        let plaintext = b"roundtrip-secret";
+        let (nonce, ciphertext) = encrypt_value(&unwrapped, plaintext, &aad).expect("encrypt");
+        let decrypted = decrypt_value(&dek, &nonce, &ciphertext, &aad).expect("decrypt");
+        assert_eq!(decrypted, plaintext);
+    }
 }
