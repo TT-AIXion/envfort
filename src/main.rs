@@ -16,8 +16,8 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    Commands, ExportArgs, InitArgs, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs,
-    SetArgs, parse_cli,
+    Commands, ExportArgs, ImportArgs, InitArgs, ListArgs, ProfileCommands, RemoveArgs,
+    RotateKekArgs, RunArgs, SetArgs, parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
@@ -64,6 +64,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::Rm(args) => cmd_rm(&args)?,
         Commands::RotateKek(args) => cmd_rotate_kek(&args)?,
         Commands::Export(args) => cmd_export(&args)?,
+        Commands::Import(args) => cmd_import(&args)?,
         Commands::Profile(args) => cmd_profile(args.command)?,
     }
 
@@ -325,6 +326,58 @@ fn cmd_export(args: &ExportArgs) -> Result<(), CliError> {
         Some("encrypted backup"),
     )?;
     println!("exported encrypted backup to {}", output_path.display());
+    Ok(())
+}
+
+fn cmd_import(args: &ImportArgs) -> Result<(), CliError> {
+    if !args.encrypted {
+        return Err(CliError::InvalidArgument(
+            "import requires --encrypted".to_string(),
+        ));
+    }
+
+    let encoded = fs::read(&args.path)?;
+    let payload: EncryptedBackupFile = bincode::deserialize(&encoded).map_err(|err| {
+        CliError::InvalidArgument(format!("backup deserialization failed: {err}"))
+    })?;
+    if payload.version != 1 {
+        return Err(CliError::InvalidArgument(format!(
+            "unsupported backup version {}",
+            payload.version
+        )));
+    }
+
+    let keychain_profile = args.profile.as_deref().unwrap_or(&payload.profile);
+    let backend = get_backend();
+    let kek = backend.retrieve_kek(keychain_profile)?;
+
+    let aad = AadData {
+        profile_id: payload.profile.clone(),
+        key_id: payload.key_id.clone(),
+        record_version: payload.version,
+        aead_alg: payload.aead_alg.clone(),
+        kek_id: payload.kek_id.clone(),
+    };
+    let dek = unwrap_dek(&kek, &payload.wrap_nonce, &payload.wrapped_dek, &aad)?;
+    let mut vault_bytes = decrypt_value(&dek, &payload.value_nonce, &payload.ciphertext, &aad)?;
+
+    let db_path = default_db_path()?;
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&db_path, &vault_bytes)?;
+    fs::set_permissions(&db_path, fs::Permissions::from_mode(0o600))?;
+    vault_bytes.zeroize();
+
+    let db = VaultDb::init_db(&db_path)?;
+    db.log_audit(
+        "import",
+        None,
+        Some(&payload.profile),
+        Some("encrypted backup"),
+    )?;
+
+    println!("imported encrypted backup from {}", args.path);
     Ok(())
 }
 
