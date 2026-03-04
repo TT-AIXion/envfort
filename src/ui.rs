@@ -793,6 +793,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn accepts_valid_host_header() {
+        let app = build_test_app(31341).await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(HOST, "localhost:31341")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn cors_headers_are_not_present() {
+        let app = build_test_app(31342).await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(HOST, "127.0.0.1:31342")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none()
+        );
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-methods")
+                .is_none()
+        );
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-headers")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
     async fn rejects_bad_origin_for_state_changes() {
         let app = build_test_app(31339).await;
         let response = app
@@ -812,6 +862,25 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn allows_valid_origin_for_state_changes() {
+        let app = build_test_app(31343).await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/health")
+                    .header(HOST, "127.0.0.1:31343")
+                    .header(ORIGIN, "http://127.0.0.1:31343")
+                    .header(AUTHORIZATION, "Bearer test-token")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_ne!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
