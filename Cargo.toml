@@ -2,6 +2,14 @@
 name = "envfort"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.87"
+description = "Write-only environment variable secret vault with keychain-backed envelope encryption"
+license = "MIT"
+repository = "https://github.com/TT-AIXion/envfort"
+homepage = "https://github.com/TT-AIXion/envfort"
+readme = "README.md"
+keywords = ["secrets", "vault", "keychain", "cli", "encryption"]
+categories = ["command-line-utilities", "cryptography"]
 
 [dependencies]
 aes-gcm-siv = "0.11.1"
