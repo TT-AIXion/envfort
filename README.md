@@ -1,5 +1,9 @@
 # envfort
 
+[![CI](https://github.com/TT-AIXion/envfort/actions/workflows/ci.yml/badge.svg)](https://github.com/TT-AIXion/envfort/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/envfort.svg)](https://crates.io/crates/envfort)
+[![License](https://img.shields.io/crates/l/envfort.svg)](https://github.com/TT-AIXion/envfort/blob/main/LICENSE)
+
 `envfort` is a write-only secret vault for environment-variable injection.
 Secrets are encrypted at rest, stored in SQLite, KEK-protected in OS keychain, and decrypted only for short-lived command execution.
 
