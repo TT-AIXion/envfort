@@ -23,6 +23,7 @@ use std::time::Instant;
 use argon2::{Algorithm, Argon2, Params, Version};
 use rpassword::prompt_password;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -51,6 +52,38 @@ struct EncryptedBackupFile {
     ciphertext: Vec<u8>,
     wrap_nonce: Vec<u8>,
     wrapped_dek: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct AppConfig {
+    #[serde(default)]
+    run: RunConfig,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct RunConfig {
+    #[serde(default)]
+    allowlist: RunAllowlist,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct RunAllowlist {
+    #[serde(default)]
+    commands: Vec<AllowlistCommand>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct AllowlistCommand {
+    path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AllowlistMatch {
+    Matched,
+    Missing,
+    HashMismatch,
 }
 
 fn main() {
@@ -170,6 +203,8 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
         .command
         .split_first()
         .ok_or_else(|| CliError::InvalidArgument("run command requires a program".to_string()))?;
+    let program_path = resolve_program_path(program)?;
+    enforce_run_allowlist(&program_path, args)?;
 
     let db = open_default_db()?;
     let backend = get_backend();
@@ -222,7 +257,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
 
     let status = match inject_mode {
         InjectMode::Env => {
-            let mut child = Command::new(program);
+            let mut child = Command::new(&program_path);
             child.args(command_args);
             for (key, value) in &env_secrets {
                 child.env(key, value.as_str());
@@ -231,7 +266,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
         }
         InjectMode::Stdin => {
             let payload = build_secret_payload(&env_secrets);
-            let mut child = Command::new(program);
+            let mut child = Command::new(&program_path);
             child.args(command_args);
             child.stdin(Stdio::piped());
             let mut child = child.spawn()?;
@@ -244,7 +279,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
             let payload = build_secret_payload(&env_secrets);
             let (read_fd, write_fd) = create_pipe()?;
 
-            let mut child = Command::new(program);
+            let mut child = Command::new(&program_path);
             child
                 .args(command_args)
                 .env("ENVFORT_SECRET_FD", read_fd.to_string());
@@ -295,7 +330,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
                 Ok(())
             });
 
-            let mut child = Command::new(program);
+            let mut child = Command::new(&program_path);
             child
                 .args(command_args)
                 .env("ENVFORT_SECRET_SOCKET", &socket_path);
@@ -319,7 +354,7 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
             fs::write(&file_path, payload.as_bytes())?;
             fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600))?;
 
-            let mut child = Command::new(program);
+            let mut child = Command::new(&program_path);
             child
                 .args(command_args)
                 .env("ENVFORT_SECRET_FILE", &file_path);
@@ -383,6 +418,216 @@ fn resolve_inject_mode(args: &RunArgs) -> InjectMode {
         Some(mode) => mode,
         None if args.llm_safe => InjectMode::Fd,
         None => InjectMode::Env,
+    }
+}
+
+fn is_ci_mode(args: &RunArgs) -> bool {
+    args.ci || env_var_truthy("ENVFORT_CI")
+}
+
+fn env_var_truthy(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(value) => {
+            let value = value.trim().to_ascii_lowercase();
+            matches!(value.as_str(), "1" | "true" | "yes" | "on")
+        }
+        Err(_) => false,
+    }
+}
+
+fn enforce_run_allowlist(program_path: &Path, args: &RunArgs) -> Result<(), CliError> {
+    let mut config = load_app_config()?;
+    let current_hash = compute_sha256(program_path)?;
+    let command_path = program_path.to_string_lossy().to_string();
+    let match_result = match_allowlist_entry(&config, program_path, &current_hash)?;
+
+    if match_result == AllowlistMatch::Matched {
+        return Ok(());
+    }
+
+    let strict = is_ci_mode(args) || args.llm_safe;
+    if strict {
+        return Err(CliError::InvalidArgument(format!(
+            "command '{}' is not in run allowlist; add it to ~/.envfort/config.toml [run.allowlist.commands]",
+            command_path
+        )));
+    }
+
+    let prompt = match match_result {
+        AllowlistMatch::Missing => format!(
+            "allow command '{}' (sha256:{}) for future runs?",
+            command_path, current_hash
+        ),
+        AllowlistMatch::HashMismatch => format!(
+            "command hash changed for '{}'; update allowlist to sha256:{}?",
+            command_path, current_hash
+        ),
+        AllowlistMatch::Matched => return Ok(()),
+    };
+
+    let approved = confirm_prompt(&prompt)?;
+    if !approved {
+        return Err(CliError::InvalidArgument(format!(
+            "command '{}' is not allowlisted",
+            command_path
+        )));
+    }
+
+    upsert_allowlist_entry(
+        &mut config,
+        AllowlistCommand {
+            path: command_path.clone(),
+            hash: Some(format!("sha256:{current_hash}")),
+        },
+    );
+    save_app_config(&config)?;
+    println!("allowlisted command={command_path}");
+    Ok(())
+}
+
+fn match_allowlist_entry(
+    config: &AppConfig,
+    program_path: &Path,
+    current_hash: &str,
+) -> Result<AllowlistMatch, CliError> {
+    let mut has_matching_path = false;
+    let mut has_hash_mismatch = false;
+
+    for entry in &config.run.allowlist.commands {
+        let entry_path = normalize_path_for_comparison(Path::new(&entry.path));
+        if entry_path.as_path() != program_path {
+            continue;
+        }
+
+        has_matching_path = true;
+        match &entry.hash {
+            None => return Ok(AllowlistMatch::Matched),
+            Some(hash_value) => {
+                let expected = normalize_allowlist_hash(hash_value).ok_or_else(|| {
+                    CliError::InvalidArgument(format!(
+                        "invalid allowlist hash format for path {}",
+                        entry.path
+                    ))
+                })?;
+                if expected == current_hash {
+                    return Ok(AllowlistMatch::Matched);
+                }
+                has_hash_mismatch = true;
+            }
+        }
+    }
+
+    if has_hash_mismatch && has_matching_path {
+        return Ok(AllowlistMatch::HashMismatch);
+    }
+    Ok(AllowlistMatch::Missing)
+}
+
+fn normalize_allowlist_hash(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let candidate = trimmed
+        .strip_prefix("sha256:")
+        .or_else(|| trimmed.strip_prefix("SHA256:"))
+        .unwrap_or(trimmed);
+    if candidate.len() != 64 || !candidate.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(candidate.to_ascii_lowercase())
+}
+
+fn resolve_program_path(program: &str) -> Result<PathBuf, CliError> {
+    let candidate = PathBuf::from(program);
+    if candidate.is_absolute() || program.contains(std::path::MAIN_SEPARATOR) {
+        return fs::canonicalize(&candidate).map_err(|err| {
+            CliError::InvalidArgument(format!(
+                "failed to resolve command path '{}': {err}",
+                candidate.display()
+            ))
+        });
+    }
+
+    let path_var = std::env::var_os("PATH")
+        .ok_or_else(|| CliError::InvalidArgument("PATH is not set".to_string()))?;
+    for path_dir in std::env::split_paths(&path_var) {
+        let full = path_dir.join(program);
+        if !full.is_file() {
+            continue;
+        }
+        if let Ok(canonical) = fs::canonicalize(&full) {
+            return Ok(canonical);
+        }
+    }
+
+    Err(CliError::InvalidArgument(format!(
+        "command '{}' not found in PATH",
+        program
+    )))
+}
+
+fn normalize_path_for_comparison(path: &Path) -> PathBuf {
+    match fs::canonicalize(path) {
+        Ok(canonical) => canonical,
+        Err(_) if path.is_absolute() => path.to_path_buf(),
+        Err(_) => match std::env::current_dir() {
+            Ok(current_dir) => current_dir.join(path),
+            Err(_) => path.to_path_buf(),
+        },
+    }
+}
+
+fn compute_sha256(path: &Path) -> Result<String, CliError> {
+    let bytes = fs::read(path)?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let digest = hasher.finalize();
+    Ok(format!("{digest:x}"))
+}
+
+fn load_app_config() -> Result<AppConfig, CliError> {
+    let path = config_path()?;
+    if !path.exists() {
+        return Ok(AppConfig::default());
+    }
+
+    let raw = fs::read_to_string(&path)?;
+    if raw.trim().is_empty() {
+        return Ok(AppConfig::default());
+    }
+
+    toml::from_str(&raw).map_err(|err| {
+        CliError::InvalidArgument(format!("failed to parse {}: {err}", path.display()))
+    })
+}
+
+fn save_app_config(config: &AppConfig) -> Result<(), CliError> {
+    let path = config_path()?;
+    if let Some(parent) = path.parent() {
+        ensure_secure_dir(parent)?;
+    }
+
+    let serialized = toml::to_string_pretty(config)
+        .map_err(|err| CliError::InvalidArgument(format!("failed to serialize config: {err}")))?;
+    fs::write(&path, serialized)?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+fn upsert_allowlist_entry(config: &mut AppConfig, entry: AllowlistCommand) {
+    if let Some(existing) = config
+        .run
+        .allowlist
+        .commands
+        .iter_mut()
+        .find(|candidate| candidate.path == entry.path)
+    {
+        *existing = entry;
+    } else {
+        config.run.allowlist.commands.push(entry);
+        config
+            .run
+            .allowlist
+            .commands
+            .sort_by(|left, right| left.path.cmp(&right.path));
     }
 }
 
@@ -717,6 +962,12 @@ fn default_db_path() -> Result<PathBuf, CliError> {
     let data_dir = envfort_data_dir()?;
     ensure_secure_dir(&data_dir)?;
     Ok(data_dir.join("vault.db"))
+}
+
+fn config_path() -> Result<PathBuf, CliError> {
+    let data_dir = envfort_data_dir()?;
+    ensure_secure_dir(&data_dir)?;
+    Ok(data_dir.join("config.toml"))
 }
 
 fn envfort_data_dir() -> Result<PathBuf, CliError> {

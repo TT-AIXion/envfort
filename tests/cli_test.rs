@@ -1,7 +1,8 @@
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
@@ -42,6 +43,48 @@ fn create_base_command(home: &Path) -> Command {
     cmd.env("HOME", home)
         .env("ENVFORT_PASSPHRASE", TEST_PASSPHRASE);
     cmd
+}
+
+fn resolve_python3_path() -> String {
+    let output = Command::new("python3")
+        .args([
+            "-c",
+            "import os,sys; print(os.path.realpath(sys.executable))",
+        ])
+        .output()
+        .expect("resolve python3 path");
+    assert!(output.status.success(), "python3 path resolution failed");
+    String::from_utf8(output.stdout)
+        .expect("python3 path utf8")
+        .trim()
+        .to_string()
+}
+
+fn write_allowlist_config(home: &Path, commands: &[(&str, Option<&str>)]) {
+    let envfort_dir = home.join(".envfort");
+    fs::create_dir_all(&envfort_dir).expect("create envfort dir");
+    fs::set_permissions(&envfort_dir, fs::Permissions::from_mode(0o700))
+        .expect("chmod envfort dir");
+
+    let mut entries = Vec::with_capacity(commands.len());
+    for (path, hash) in commands {
+        let escaped_path = format!("{path:?}");
+        match hash {
+            Some(hash) => entries.push(format!("{{ path = {escaped_path}, hash = {hash:?} }}")),
+            None => entries.push(format!("{{ path = {escaped_path} }}")),
+        }
+    }
+
+    let body = format!("[run.allowlist]\ncommands = [{}]\n", entries.join(", "));
+    let config_path = envfort_dir.join("config.toml");
+    fs::write(&config_path, body).expect("write config.toml");
+    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o600))
+        .expect("chmod config.toml");
+}
+
+fn allowlist_python3(home: &Path) {
+    let python_path = resolve_python3_path();
+    write_allowlist_config(home, &[(&python_path, None)]);
 }
 
 fn derive_test_kek(passphrase: &str, profile: &str) -> [u8; KEY_SIZE] {
@@ -224,6 +267,7 @@ fn kdf_calibrate_runs_successfully() {
 fn run_inject_env_mode_works() {
     let temp_home = new_temp_home("inject-env");
     seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
 
     let status = create_base_command(&temp_home)
         .args([
@@ -248,6 +292,7 @@ fn run_inject_env_mode_works() {
 fn run_inject_stdin_mode_works() {
     let temp_home = new_temp_home("inject-stdin");
     seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
 
     let status = create_base_command(&temp_home)
         .args([
@@ -272,6 +317,7 @@ fn run_inject_stdin_mode_works() {
 fn run_inject_fd_mode_works() {
     let temp_home = new_temp_home("inject-fd");
     seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
 
     let status = create_base_command(&temp_home)
         .args([
@@ -296,6 +342,7 @@ fn run_inject_fd_mode_works() {
 fn run_llm_safe_defaults_to_fd() {
     let temp_home = new_temp_home("inject-llm-safe");
     seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
 
     let status = create_base_command(&temp_home)
         .args([
@@ -319,6 +366,7 @@ fn run_llm_safe_defaults_to_fd() {
 fn run_inject_tmpfile_mode_works_and_cleans_up() {
     let temp_home = new_temp_home("inject-tmpfile");
     seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
     let marker_file = temp_home.join("tmpfile-marker.txt");
 
     let status = create_base_command(&temp_home)
@@ -352,6 +400,7 @@ fn run_inject_tmpfile_mode_works_and_cleans_up() {
 fn run_inject_socket_mode_works_and_cleans_up() {
     let temp_home = new_temp_home("inject-socket");
     seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
     let marker_file = temp_home.join("socket-marker.txt");
 
     let status = create_base_command(&temp_home)
@@ -378,5 +427,134 @@ fn run_inject_socket_mode_works_and_cleans_up() {
         "socket path should be removed after child exit"
     );
 
+    let _ = fs::remove_dir_all(temp_home);
+}
+
+#[test]
+fn run_ci_rejects_unknown_command() {
+    let temp_home = new_temp_home("allowlist-ci-reject");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+
+    let output = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--ci",
+            "--inject",
+            "env",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; sys.exit(0 if os.environ.get('MY_SECRET')=='s3cr3t' else 1)",
+        ])
+        .output()
+        .expect("execute run --ci");
+
+    assert!(
+        !output.status.success(),
+        "ci mode must reject unknown command"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("allowlist"), "stderr={stderr}");
+    let _ = fs::remove_dir_all(temp_home);
+}
+
+#[test]
+fn run_ci_allows_allowlisted_command() {
+    let temp_home = new_temp_home("allowlist-ci-allow");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    allowlist_python3(&temp_home);
+
+    let status = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--ci",
+            "--inject",
+            "env",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; sys.exit(0 if os.environ.get('MY_SECRET')=='s3cr3t' else 1)",
+        ])
+        .status()
+        .expect("execute run --ci allowlisted");
+
+    assert!(
+        status.success(),
+        "ci allowlisted command failed: {status:?}"
+    );
+    let _ = fs::remove_dir_all(temp_home);
+}
+
+#[test]
+fn run_interactive_approval_adds_allowlist() {
+    let temp_home = new_temp_home("allowlist-interactive");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    let python_path = resolve_python3_path();
+
+    let mut child = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--inject",
+            "env",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; sys.exit(0 if os.environ.get('MY_SECRET')=='s3cr3t' else 1)",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn run command");
+
+    let mut stdin = child.stdin.take().expect("stdin handle");
+    stdin.write_all(b"y\n").expect("write interactive approval");
+
+    let output = child.wait_with_output().expect("wait for child");
+    assert!(
+        output.status.success(),
+        "interactive approval command failed: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let config_path = temp_home.join(".envfort").join("config.toml");
+    let config = fs::read_to_string(&config_path).expect("read config");
+    assert!(config.contains(&python_path), "config missing command path");
+    assert!(config.contains("sha256:"), "config missing command hash");
+    let _ = fs::remove_dir_all(temp_home);
+}
+
+#[test]
+fn run_llm_safe_rejects_unknown_command() {
+    let temp_home = new_temp_home("allowlist-llm-safe-reject");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+
+    let output = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--llm-safe",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; sys.exit(0 if os.environ.get('MY_SECRET')=='s3cr3t' else 1)",
+        ])
+        .output()
+        .expect("execute run --llm-safe");
+
+    assert!(
+        !output.status.success(),
+        "llm-safe mode must reject unknown command"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("allowlist"), "stderr={stderr}");
     let _ = fs::remove_dir_all(temp_home);
 }

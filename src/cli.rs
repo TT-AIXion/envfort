@@ -51,6 +51,8 @@ pub struct RunArgs {
     pub command: Vec<String>,
     #[arg(long, default_value = "default")]
     pub profile: String,
+    #[arg(long, default_value_t = false)]
+    pub ci: bool,
     #[arg(long, value_enum)]
     pub inject: Option<InjectMode>,
     #[arg(long, default_value_t = false)]
