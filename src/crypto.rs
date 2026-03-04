@@ -4,7 +4,7 @@
 use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
-use secrecy::{ExposeSecret, SecretVec};
+use secrecy::{ExposeSecret, SecretSlice};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -19,7 +19,7 @@ pub const ARGON2_MIN_SALT_LEN: usize = 16;
 
 #[derive(Clone)]
 pub struct KEK {
-    material: SecretVec<u8>,
+    material: SecretSlice<u8>,
 }
 
 impl KEK {
@@ -33,7 +33,7 @@ impl KEK {
         }
 
         Ok(Self {
-            material: SecretVec::new(key_material.to_vec()),
+            material: key_material.to_vec().into(),
         })
     }
 
@@ -44,7 +44,7 @@ impl KEK {
 
 #[derive(Clone)]
 pub struct DEK {
-    material: SecretVec<u8>,
+    material: SecretSlice<u8>,
 }
 
 impl DEK {
@@ -58,7 +58,7 @@ impl DEK {
         }
 
         Ok(Self {
-            material: SecretVec::new(key_material.to_vec()),
+            material: key_material.to_vec().into(),
         })
     }
 
