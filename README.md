@@ -14,6 +14,7 @@ Secrets are encrypted at rest, stored in SQLite, KEK-protected in OS keychain, a
 - Encrypted backup export/import (`export --encrypted`, `import --encrypted`)
 - Local audit log with tail view (`audit --tail`)
 - Profile isolation (`profile create|list|delete`)
+- LLM isolation allowlist for `run` commands (`config.toml`, `--ci`, `--llm-safe`)
 
 ## Installation
 
@@ -67,6 +68,23 @@ envfort run --profile default -- env | grep API_TOKEN
 ```
 
 Decrypts in memory, injects env vars to child process, then zeroizes buffers.
+
+Allowlist policy:
+
+- `run` checks `~/.envfort/config.toml` `[run.allowlist]`.
+- Unknown command in interactive mode: approval prompt, then auto-add with SHA-256 hash.
+- CI mode (`--ci` or `ENVFORT_CI=1`): unknown command is rejected.
+- `--llm-safe`: default injection mode becomes `fd` and allowlist is strictly enforced.
+
+Example:
+
+```toml
+[run.allowlist]
+commands = [
+  { path = "/usr/bin/python3", hash = "sha256:..." },
+  { path = "/usr/bin/node" }
+]
+```
 
 ### rm
 
@@ -126,13 +144,13 @@ envfort profile delete team-a
 
 Manages profile namespace and profile-specific KEKs.
 
-### ui (placeholder)
+### ui
 
 ```bash
 envfort ui
 ```
 
-Planned command. Current release does not provide a production UI yet.
+Starts localhost-only Web UI with token auth and DNS rebinding protections.
 
 ## Security Design Overview
 
@@ -146,11 +164,11 @@ Planned command. Current release does not provide a production UI yet.
 
 | Mode | Command shape | Status | Notes |
 |---|---|---|---|
-| Environment variables | `envfort run -- <cmd>` | Implemented | Default mode |
-| Stdin payload | `envfort run --mode stdin -- <cmd>` | Planned | For tools reading from stdin |
-| File descriptor | `envfort run --mode fd -- <cmd>` | Planned | Avoids wide env exposure |
-| Unix socket | `envfort run --mode socket -- <cmd>` | Planned | Short-lived local channel |
-| Temporary file | `envfort run --mode tmpfile -- <cmd>` | Planned | Tight permissions, lifecycle cleanup |
+| Environment variables | `envfort run --inject env -- <cmd>` | Implemented | Default mode |
+| Stdin payload | `envfort run --inject stdin -- <cmd>` | Implemented | For tools reading from stdin |
+| File descriptor | `envfort run --inject fd -- <cmd>` | Implemented | Reduced env exposure |
+| Unix socket | `envfort run --inject socket -- <cmd>` | Implemented | One-shot local channel |
+| Temporary file | `envfort run --inject tmpfile -- <cmd>` | Implemented | `0600` file + cleanup |
 
 ## Threat Model
 
