@@ -347,3 +347,36 @@ fn run_inject_tmpfile_mode_works_and_cleans_up() {
 
     let _ = fs::remove_dir_all(temp_home);
 }
+
+#[test]
+fn run_inject_socket_mode_works_and_cleans_up() {
+    let temp_home = new_temp_home("inject-socket");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    let marker_file = temp_home.join("socket-marker.txt");
+
+    let status = create_base_command(&temp_home)
+        .env("MARKER_SOCKET", &marker_file)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--inject",
+            "socket",
+            "--",
+            "python3",
+            "-c",
+            "import os,socket,sys,pathlib; p=os.environ['ENVFORT_SECRET_SOCKET']; s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect(p); data=s.recv(4096).decode(); s.close(); pathlib.Path(os.environ['MARKER_SOCKET']).write_text(p); sys.exit(0 if 'MY_SECRET=s3cr3t' in data.splitlines() else 1)",
+        ])
+        .status()
+        .expect("execute run --inject socket");
+
+    assert!(status.success(), "socket injection failed: {status:?}");
+
+    let generated_path = fs::read_to_string(&marker_file).expect("read socket marker");
+    assert!(
+        !Path::new(generated_path.trim()).exists(),
+        "socket path should be removed after child exit"
+    );
+
+    let _ = fs::remove_dir_all(temp_home);
+}

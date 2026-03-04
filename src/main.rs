@@ -5,12 +5,19 @@ mod keychain;
 mod storage;
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, ErrorKind, Write};
 use std::os::fd::RawFd;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::thread;
 use std::time::Instant;
+use std::time::Duration;
 
 use argon2::{Algorithm, Argon2, Params, Version};
 use rpassword::prompt_password;
@@ -249,9 +256,58 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
             status
         }
         InjectMode::Socket => {
-            return Err(CliError::InvalidArgument(
-                "inject mode socket not implemented yet".to_string(),
-            ));
+            let payload = build_secret_payload(&env_secrets);
+            let socket_path = build_socket_path()?;
+            if socket_path.exists() {
+                fs::remove_file(&socket_path)?;
+            }
+
+            let listener = UnixListener::bind(&socket_path)?;
+            listener.set_nonblocking(true)?;
+
+            let stop = Arc::new(AtomicBool::new(false));
+            let stop_for_thread = Arc::clone(&stop);
+            let socket_path_for_thread = socket_path.clone();
+            let payload_bytes = payload.into_bytes();
+
+            let server_thread = thread::spawn(move || -> io::Result<()> {
+                loop {
+                    match listener.accept() {
+                        Ok((mut stream, _addr)) => {
+                            stream.write_all(&payload_bytes)?;
+                            stream.flush()?;
+                            break;
+                        }
+                        Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                            if stop_for_thread.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+                if socket_path_for_thread.exists() {
+                    let _ = fs::remove_file(&socket_path_for_thread);
+                }
+                Ok(())
+            });
+
+            let mut child = Command::new(program);
+            child
+                .args(command_args)
+                .env("ENVFORT_SECRET_SOCKET", &socket_path);
+            let child_status = child.status();
+
+            stop.store(true, Ordering::Relaxed);
+            let server_result = server_thread
+                .join()
+                .map_err(|_| CliError::Io(io::Error::other("socket thread panicked")))?;
+            if socket_path.exists() {
+                let _ = fs::remove_file(&socket_path);
+            }
+            server_result?;
+            child_status?
         }
         InjectMode::Tmpfile => {
             let payload = build_secret_payload(&env_secrets);
@@ -691,6 +747,24 @@ fn ensure_runtime_secret_dir() -> Result<PathBuf, CliError> {
     fs::create_dir_all(&base_dir)?;
     fs::set_permissions(&base_dir, fs::Permissions::from_mode(0o700))?;
     Ok(base_dir)
+}
+
+fn build_socket_path() -> Result<PathBuf, CliError> {
+    let runtime_dir = ensure_runtime_secret_dir()?;
+    let name = format!("ef-{}.sock", Uuid::new_v4().simple());
+    let candidate = runtime_dir.join(&name);
+    if candidate.to_string_lossy().len() < 96 {
+        return Ok(candidate);
+    }
+
+    let fallback = std::env::temp_dir().join(name);
+    if fallback.to_string_lossy().len() < 96 {
+        return Ok(fallback);
+    }
+
+    Err(CliError::InvalidArgument(
+        "could not allocate a short unix socket path".to_string(),
+    ))
 }
 
 fn disable_core_dumps() -> Result<(), CliError> {
