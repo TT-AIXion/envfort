@@ -3,6 +3,7 @@ mod crypto;
 mod error;
 mod keychain;
 mod storage;
+mod ui;
 
 use std::fs;
 use std::io::{self, ErrorKind, Write};
@@ -16,8 +17,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::thread;
-use std::time::Instant;
 use std::time::Duration;
+use std::time::Instant;
 
 use argon2::{Algorithm, Argon2, Params, Version};
 use rpassword::prompt_password;
@@ -26,9 +27,9 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, InjectMode, KdfArgs,
-    KdfCalibrateArgs, KdfCommands, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs,
-    SetArgs, parse_cli,
+    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, InjectMode, KdfArgs, KdfCalibrateArgs,
+    KdfCommands, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs, SetArgs, UiArgs,
+    parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
@@ -79,6 +80,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::Audit(args) => cmd_audit(&args)?,
         Commands::Kdf(args) => cmd_kdf(args)?,
         Commands::Profile(args) => cmd_profile(args.command)?,
+        Commands::Ui(args) => cmd_ui(&args)?,
     }
 
     Ok(())
@@ -360,9 +362,8 @@ fn write_all_to_fd(fd: RawFd, mut data: &[u8]) -> Result<(), CliError> {
             return Err(CliError::Io(io::Error::last_os_error()));
         }
 
-        let written = usize::try_from(written).map_err(|_| {
-            CliError::Io(io::Error::other("negative write result"))
-        })?;
+        let written = usize::try_from(written)
+            .map_err(|_| CliError::Io(io::Error::other("negative write result")))?;
         data = &data[written..];
     }
     Ok(())
@@ -577,6 +578,19 @@ fn cmd_kdf(args: KdfArgs) -> Result<(), CliError> {
     }
 }
 
+fn cmd_ui(args: &UiArgs) -> Result<(), CliError> {
+    if args.timeout == 0 {
+        return Err(CliError::InvalidArgument(
+            "--timeout must be greater than 0".to_string(),
+        ));
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(ui::run_ui(args.no_open, args.timeout))
+}
+
 fn cmd_kdf_calibrate(args: &KdfCalibrateArgs) -> Result<(), CliError> {
     if args.target_ms == 0 {
         return Err(CliError::InvalidArgument(
@@ -628,7 +642,12 @@ fn cmd_kdf_calibrate(args: &KdfCalibrateArgs) -> Result<(), CliError> {
     let db = open_default_db()?;
     let value = format!("argon2id:m={m_cost},t={t_cost},p={p_cost}");
     db.set_meta("kdf_params", &value)?;
-    db.log_audit("kdf-calibrate", None, None, Some(&format!("target_ms={}", args.target_ms)))?;
+    db.log_audit(
+        "kdf-calibrate",
+        None,
+        None,
+        Some(&format!("target_ms={}", args.target_ms)),
+    )?;
 
     println!("recommended {value} measured_ms={elapsed_ms}");
     Ok(())

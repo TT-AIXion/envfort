@@ -72,8 +72,7 @@ fn encrypt_with_key(key: &[u8], nonce: &[u8; NONCE_SIZE], msg: &[u8], aad: &[u8]
 fn seed_secret_for_run(home: &Path, key_name: &str, value: &str) {
     let vault_dir = home.join(".envfort");
     fs::create_dir_all(&vault_dir).expect("create vault dir");
-    fs::set_permissions(&vault_dir, fs::Permissions::from_mode(0o700))
-        .expect("chmod vault dir");
+    fs::set_permissions(&vault_dir, fs::Permissions::from_mode(0o700)).expect("chmod vault dir");
 
     let db_path = vault_dir.join("vault.db");
     let conn = Connection::open(&db_path).expect("open db");
@@ -180,6 +179,7 @@ fn subcommand_help_exits_successfully() {
         vec!["profile", "create", "--help"],
         vec!["profile", "list", "--help"],
         vec!["profile", "delete", "--help"],
+        vec!["ui", "--help"],
     ];
 
     for args in subcommands {

@@ -21,6 +21,7 @@ pub enum Commands {
     Audit(AuditArgs),
     Kdf(KdfArgs),
     Profile(ProfileArgs),
+    Ui(UiArgs),
 }
 
 #[derive(Debug, Args)]
@@ -136,6 +137,14 @@ pub enum ProfileCommands {
 #[derive(Debug, Args)]
 pub struct ProfileNameArgs {
     pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct UiArgs {
+    #[arg(long, default_value_t = false)]
+    pub no_open: bool,
+    #[arg(long, default_value_t = 30)]
+    pub timeout: u64,
 }
 
 pub fn parse_cli() -> Cli {

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>envfort UI</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="hero">
+        <h1>envfort</h1>
+        <p class="subtitle">Local write-only secret vault UI</p>
+      </header>
+
+      <section class="card" aria-labelledby="session-title">
+        <h2 id="session-title">Session</h2>
+        <p id="session-status">Connecting…</p>
+      </section>
+
+      <section class="card" aria-labelledby="profile-title">
+        <h2 id="profile-title">Profiles</h2>
+        <div class="row">
+          <label for="profile-select">Active profile</label>
+          <select id="profile-select"></select>
+          <button id="refresh-secrets" type="button">Refresh</button>
+        </div>
+        <div class="row stack-mobile">
+          <input id="profile-name" type="text" placeholder="new-profile" autocomplete="off" />
+          <button id="profile-create" type="button">Create</button>
+          <button id="profile-delete" type="button" class="danger">Delete Active</button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="set-title">
+        <h2 id="set-title">Set Secret</h2>
+        <form id="set-form" autocomplete="off">
+          <div class="row stack-mobile">
+            <input id="secret-key" type="text" placeholder="KEY_NAME" required autocomplete="off" />
+            <input
+              id="secret-value"
+              type="password"
+              placeholder="Secret value"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+              autocorrect="off"
+            />
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="import-title">
+        <h2 id="import-title">Import .env</h2>
+        <div class="row stack-mobile">
+          <input id="env-file" type="file" accept=".env,text/plain" />
+          <button id="import-file" type="button">Import File</button>
+        </div>
+        <textarea
+          id="env-paste"
+          placeholder="KEY=value"
+          autocomplete="off"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off"
+        ></textarea>
+        <div class="row">
+          <button id="import-paste" type="button">Import Pasted .env</button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="list-title">
+        <h2 id="list-title">Keys</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Value</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="secret-list"></tbody>
+        </table>
+      </section>
+
+      <section class="card" aria-live="polite">
+        <h2>Status</h2>
+        <p id="message"></p>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

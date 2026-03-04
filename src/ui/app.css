@@ -1,0 +1,145 @@
+:root {
+  color-scheme: light;
+  --bg: #eef1f6;
+  --card: #ffffff;
+  --ink: #1d2430;
+  --muted: #5f6a7d;
+  --accent: #1167db;
+  --danger: #b42424;
+  --line: #d7deea;
+  --shadow: 0 8px 30px rgba(12, 23, 44, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Noto Sans", "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 0% 0%, #f6f9ff 0%, #eef1f6 46%, #e4e8f2 100%);
+}
+
+.layout {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 16px 56px;
+  display: grid;
+  gap: 14px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.01em;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fbfcfe;
+  color: var(--ink);
+}
+
+textarea {
+  margin-top: 10px;
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+}
+
+button {
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding: 9px 6px;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+#message {
+  margin: 0;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+#message.error {
+  color: var(--danger);
+}
+
+#message.success {
+  color: #14723c;
+}
+
+@media (max-width: 720px) {
+  .stack-mobile {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stack-mobile > * {
+    width: 100%;
+  }
+}
