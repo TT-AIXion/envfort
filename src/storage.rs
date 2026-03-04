@@ -42,6 +42,16 @@ pub struct StoredSecret {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditEntry {
+    pub id: i64,
+    pub timestamp: i64,
+    pub action: String,
+    pub key_name: Option<String>,
+    pub profile: Option<String>,
+    pub detail: Option<String>,
+}
+
 pub struct VaultDb {
     conn: Connection,
 }
@@ -444,6 +454,37 @@ impl VaultDb {
         )?;
 
         Ok(())
+    }
+
+    pub fn list_audit_entries(&self, limit: usize) -> Result<Vec<AuditEntry>, StorageError> {
+        let safe_limit = i64::try_from(limit).map_err(|_| {
+            StorageError::Crypto(CryptoError::AadSerialization(
+                "audit tail value too large".to_string(),
+            ))
+        })?;
+
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT id, timestamp, action, key_name, profile, detail
+            FROM audit_log
+            ORDER BY id DESC
+            LIMIT ?1
+            ",
+        )?;
+        let rows = stmt.query_map(params![safe_limit], |row| {
+            Ok(AuditEntry {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                action: row.get(2)?,
+                key_name: row.get(3)?,
+                profile: row.get(4)?,
+                detail: row.get(5)?,
+            })
+        })?;
+
+        let mut entries = rows.collect::<Result<Vec<_>, _>>()?;
+        entries.reverse();
+        Ok(entries)
     }
 }
 

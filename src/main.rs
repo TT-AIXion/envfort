@@ -16,7 +16,7 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    Commands, ExportArgs, ImportArgs, InitArgs, ListArgs, ProfileCommands, RemoveArgs,
+    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, ListArgs, ProfileCommands, RemoveArgs,
     RotateKekArgs, RunArgs, SetArgs, parse_cli,
 };
 use crate::crypto::{
@@ -65,6 +65,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::RotateKek(args) => cmd_rotate_kek(&args)?,
         Commands::Export(args) => cmd_export(&args)?,
         Commands::Import(args) => cmd_import(&args)?,
+        Commands::Audit(args) => cmd_audit(&args)?,
         Commands::Profile(args) => cmd_profile(args.command)?,
     }
 
@@ -378,6 +379,21 @@ fn cmd_import(args: &ImportArgs) -> Result<(), CliError> {
     )?;
 
     println!("imported encrypted backup from {}", args.path);
+    Ok(())
+}
+
+fn cmd_audit(args: &AuditArgs) -> Result<(), CliError> {
+    let db = open_default_db()?;
+    let entries = db.list_audit_entries(args.tail)?;
+    for entry in entries {
+        let key_name = entry.key_name.unwrap_or_else(|| "-".to_string());
+        let profile = entry.profile.unwrap_or_else(|| "-".to_string());
+        let detail = entry.detail.unwrap_or_default();
+        println!(
+            "{} {} profile={} key={} {}",
+            entry.timestamp, entry.action, profile, key_name, detail
+        );
+    }
     Ok(())
 }
 

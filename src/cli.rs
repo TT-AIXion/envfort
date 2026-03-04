@@ -18,6 +18,7 @@ pub enum Commands {
     RotateKek(RotateKekArgs),
     Export(ExportArgs),
     Import(ImportArgs),
+    Audit(AuditArgs),
     Profile(ProfileArgs),
 }
 
@@ -80,6 +81,12 @@ pub struct ImportArgs {
     pub path: String,
     #[arg(long)]
     pub profile: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct AuditArgs {
+    #[arg(long, default_value_t = 20)]
+    pub tail: usize,
 }
 
 #[derive(Debug, Args)]
