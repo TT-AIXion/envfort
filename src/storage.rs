@@ -8,7 +8,10 @@ use rusqlite::{Connection, params};
 #[cfg(test)]
 use rusqlite::OptionalExtension;
 
+use crate::crypto::{AadData, KEK, NONCE_SIZE, decrypt_value, encrypt_value, unwrap_dek, wrap_dek};
+use crate::error::CryptoError;
 use crate::error::StorageError;
+use zeroize::Zeroize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecretRecord {
@@ -256,6 +259,133 @@ impl VaultDb {
         Ok(())
     }
 
+    pub fn rotate_profile_kek(
+        &self,
+        profile: &str,
+        old_kek: &KEK,
+        new_kek: &KEK,
+        new_kek_id: &str,
+    ) -> Result<usize, StorageError> {
+        let status_key = format!("rotation:{profile}:status");
+        let total_key = format!("rotation:{profile}:total");
+        let done_key = format!("rotation:{profile}:done");
+        let new_kek_id_key = format!("rotation:{profile}:new_kek_id");
+
+        self.set_meta(&status_key, "preparing")?;
+        self.set_meta(&done_key, "0")?;
+        self.set_meta(&new_kek_id_key, new_kek_id)?;
+
+        self.conn.execute("BEGIN IMMEDIATE TRANSACTION", [])?;
+        let result = (|| -> Result<usize, StorageError> {
+            set_meta_with_conn(&self.conn, &status_key, "in_progress")?;
+
+            let mut stmt = self.conn.prepare(
+                "
+                SELECT
+                    id, profile, key_name, key_id, kek_id, version, aead_alg,
+                    nonce, encrypted_dek, ciphertext, created_at, updated_at
+                FROM secrets
+                WHERE profile = ?1
+                ORDER BY id ASC
+                ",
+            )?;
+
+            let rows = stmt.query_map(params![profile], |row| {
+                Ok(StoredSecret {
+                    id: row.get(0)?,
+                    profile: row.get(1)?,
+                    key_name: row.get(2)?,
+                    key_id: row.get(3)?,
+                    kek_id: row.get(4)?,
+                    version: row.get(5)?,
+                    aead_alg: row.get(6)?,
+                    nonce: row.get(7)?,
+                    encrypted_dek: row.get(8)?,
+                    ciphertext: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            })?;
+
+            let records = rows.collect::<Result<Vec<_>, _>>()?;
+            set_meta_with_conn(&self.conn, &total_key, &records.len().to_string())?;
+
+            let mut processed = 0usize;
+            let now = Utc::now().timestamp();
+
+            for record in records {
+                if record.encrypted_dek.len() < NONCE_SIZE {
+                    return Err(StorageError::Crypto(CryptoError::InvalidLength {
+                        kind: "wrapped dek payload",
+                        expected: NONCE_SIZE,
+                        actual: record.encrypted_dek.len(),
+                    }));
+                }
+
+                let record_version = u32::try_from(record.version).map_err(|_| {
+                    StorageError::Crypto(CryptoError::AadSerialization(
+                        "record_version overflow".to_string(),
+                    ))
+                })?;
+
+                let aad_old = AadData {
+                    profile_id: record.profile.clone(),
+                    key_id: record.key_id.clone(),
+                    record_version,
+                    aead_alg: record.aead_alg.clone(),
+                    kek_id: record.kek_id.clone(),
+                };
+
+                let (wrap_nonce, wrapped_dek) = record.encrypted_dek.split_at(NONCE_SIZE);
+                let dek = unwrap_dek(old_kek, wrap_nonce, wrapped_dek, &aad_old)?;
+
+                let aad_new = AadData {
+                    profile_id: record.profile.clone(),
+                    key_id: record.key_id.clone(),
+                    record_version,
+                    aead_alg: record.aead_alg.clone(),
+                    kek_id: new_kek_id.to_string(),
+                };
+
+                let mut plaintext = decrypt_value(&dek, &record.nonce, &record.ciphertext, &aad_old)?;
+                let (new_nonce, new_ciphertext) = encrypt_value(&dek, &plaintext, &aad_new)?;
+                plaintext.zeroize();
+                let (new_wrap_nonce, new_wrapped_dek) = wrap_dek(new_kek, &dek, &aad_new)?;
+                let mut payload =
+                    Vec::with_capacity(new_wrap_nonce.len() + new_wrapped_dek.len());
+                payload.extend_from_slice(&new_wrap_nonce);
+                payload.extend_from_slice(&new_wrapped_dek);
+
+                self.conn.execute(
+                    "
+                    UPDATE secrets
+                    SET nonce = ?1, encrypted_dek = ?2, ciphertext = ?3, kek_id = ?4, updated_at = ?5
+                    WHERE id = ?6
+                    ",
+                    params![new_nonce, payload, new_ciphertext, new_kek_id, now, record.id],
+                )?;
+
+                processed += 1;
+                set_meta_with_conn(&self.conn, &done_key, &processed.to_string())?;
+            }
+
+            Ok(processed)
+        })();
+
+        match result {
+            Ok(processed) => {
+                self.conn.execute("COMMIT", [])?;
+                self.set_meta(&status_key, "completed")?;
+                Ok(processed)
+            }
+            Err(err) => {
+                let _ = self.conn.execute("ROLLBACK", []);
+                let _ = self.set_meta(&status_key, "failed");
+                Err(err)
+            }
+        }
+    }
+
     pub fn create_profile(&self, profile: &str) -> Result<(), StorageError> {
         let now = Utc::now().timestamp();
         self.conn.execute(
@@ -317,8 +447,26 @@ impl VaultDb {
     }
 }
 
+fn set_meta_with_conn(conn: &Connection, key: &str, value: &str) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "
+        INSERT INTO meta(k, v)
+        VALUES (?1, ?2)
+        ON CONFLICT(k) DO UPDATE SET
+            v = excluded.v
+        ",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::crypto::{
+        AadData, decrypt_value, derive_kek_from_passphrase, encrypt_value, generate_dek,
+        unwrap_dek, wrap_dek, NONCE_SIZE,
+    };
+
     use super::*;
 
     fn sample_secret(profile: &str, key_name: &str, marker: u8) -> SecretRecord {
@@ -482,5 +630,69 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .expect("collect actions");
         assert_eq!(actions, vec!["set".to_string(), "run".to_string()]);
+    }
+
+    #[test]
+    fn rotate_profile_kek_rewraps_deks() {
+        let db = VaultDb::init_in_memory().expect("init db");
+        let profile = "default";
+        let key_name = "TOKEN";
+
+        let old_kek = derive_kek_from_passphrase("old-passphrase", b"0123456789abcdef")
+            .expect("derive old kek");
+        let new_kek = derive_kek_from_passphrase("new-passphrase", b"fedcba9876543210")
+            .expect("derive new kek");
+        let dek = generate_dek().expect("generate dek");
+
+        let aad_old = AadData {
+            profile_id: profile.to_string(),
+            key_id: "key-1".to_string(),
+            record_version: 1,
+            aead_alg: "AES-256-GCM-SIV".to_string(),
+            kek_id: "kek-old".to_string(),
+        };
+        let (nonce, ciphertext) = encrypt_value(&dek, b"secret-value", &aad_old).expect("encrypt");
+        let (wrap_nonce, wrapped_dek) = wrap_dek(&old_kek, &dek, &aad_old).expect("wrap dek");
+        let mut encrypted_dek = Vec::with_capacity(wrap_nonce.len() + wrapped_dek.len());
+        encrypted_dek.extend_from_slice(&wrap_nonce);
+        encrypted_dek.extend_from_slice(&wrapped_dek);
+
+        db.set_secret(&SecretRecord {
+            profile: profile.to_string(),
+            key_name: key_name.to_string(),
+            key_id: "key-1".to_string(),
+            kek_id: "kek-old".to_string(),
+            version: 1,
+            aead_alg: "AES-256-GCM-SIV".to_string(),
+            nonce,
+            encrypted_dek,
+            ciphertext,
+        })
+        .expect("set secret");
+
+        let rotated = db
+            .rotate_profile_kek(profile, &old_kek, &new_kek, "kek-new")
+            .expect("rotate kek");
+        assert_eq!(rotated, 1);
+
+        let stored = db
+            .get_secret(profile, key_name)
+            .expect("get rotated secret")
+            .expect("secret exists");
+        assert_eq!(stored.kek_id, "kek-new");
+
+        let aad_new = AadData {
+            profile_id: stored.profile.clone(),
+            key_id: stored.key_id.clone(),
+            record_version: 1,
+            aead_alg: stored.aead_alg.clone(),
+            kek_id: stored.kek_id.clone(),
+        };
+        let (new_wrap_nonce, new_wrapped_dek) = stored.encrypted_dek.split_at(NONCE_SIZE);
+        let unwrapped = unwrap_dek(&new_kek, new_wrap_nonce, new_wrapped_dek, &aad_new)
+            .expect("unwrap rotated dek");
+        let plaintext =
+            decrypt_value(&unwrapped, &stored.nonce, &stored.ciphertext, &aad_new).expect("decrypt");
+        assert_eq!(plaintext, b"secret-value");
     }
 }

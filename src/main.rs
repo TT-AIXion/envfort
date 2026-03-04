@@ -15,7 +15,8 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    Commands, InitArgs, ListArgs, ProfileCommands, RemoveArgs, RunArgs, SetArgs, parse_cli,
+    Commands, InitArgs, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs, SetArgs,
+    parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
@@ -46,6 +47,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::List(args) => cmd_list(&args)?,
         Commands::Run(args) => cmd_run(&args)?,
         Commands::Rm(args) => cmd_rm(&args)?,
+        Commands::RotateKek(args) => cmd_rotate_kek(&args)?,
         Commands::Profile(args) => cmd_profile(args.command)?,
     }
 
@@ -220,6 +222,33 @@ fn cmd_rm(args: &RemoveArgs) -> Result<(), CliError> {
     } else {
         println!("not found key={} profile={}", args.key, args.profile);
     }
+    Ok(())
+}
+
+fn cmd_rotate_kek(args: &RotateKekArgs) -> Result<(), CliError> {
+    let db = open_default_db()?;
+    let backend = get_backend();
+
+    let old_kek = backend.retrieve_kek(&args.profile)?;
+    let new_kek = generate_random_kek()?;
+    let new_kek_id = format!("kek-{}", Uuid::new_v4());
+
+    let rewrapped = db.rotate_profile_kek(&args.profile, &old_kek, &new_kek, &new_kek_id)?;
+    if let Err(err) = backend.store_kek(&args.profile, &new_kek) {
+        let rollback_kek_id = format!("rollback-kek-{}", Uuid::new_v4());
+        let _ = db.rotate_profile_kek(&args.profile, &new_kek, &old_kek, &rollback_kek_id);
+        return Err(err.into());
+    }
+
+    db.set_meta(&format!("kek_id:{}", args.profile), &new_kek_id)?;
+    db.log_audit(
+        "rotate-kek",
+        None,
+        Some(&args.profile),
+        Some(&format!("rewrapped={rewrapped}")),
+    )?;
+
+    println!("rotated kek profile={} rewrapped={rewrapped}", args.profile);
     Ok(())
 }
 

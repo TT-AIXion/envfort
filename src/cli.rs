@@ -14,6 +14,8 @@ pub enum Commands {
     List(ListArgs),
     Run(RunArgs),
     Rm(RemoveArgs),
+    #[command(name = "rotate-kek")]
+    RotateKek(RotateKekArgs),
     Profile(ProfileArgs),
 }
 
@@ -49,6 +51,12 @@ pub struct RunArgs {
 #[derive(Debug, Args)]
 pub struct RemoveArgs {
     pub key: String,
+    #[arg(long, default_value = "default")]
+    pub profile: String,
+}
+
+#[derive(Debug, Args)]
+pub struct RotateKekArgs {
     #[arg(long, default_value = "default")]
     pub profile: String,
 }
