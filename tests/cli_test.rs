@@ -314,3 +314,36 @@ fn run_llm_safe_defaults_to_fd() {
     assert!(status.success(), "llm-safe fd injection failed: {status:?}");
     let _ = fs::remove_dir_all(temp_home);
 }
+
+#[test]
+fn run_inject_tmpfile_mode_works_and_cleans_up() {
+    let temp_home = new_temp_home("inject-tmpfile");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+    let marker_file = temp_home.join("tmpfile-marker.txt");
+
+    let status = create_base_command(&temp_home)
+        .env("MARKER_FILE", &marker_file)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--inject",
+            "tmpfile",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys,pathlib; p=os.environ['ENVFORT_SECRET_FILE']; lines=open(p).read().splitlines(); pathlib.Path(os.environ['MARKER_FILE']).write_text(p); sys.exit(0 if 'MY_SECRET=s3cr3t' in lines else 1)",
+        ])
+        .status()
+        .expect("execute run --inject tmpfile");
+
+    assert!(status.success(), "tmpfile injection failed: {status:?}");
+
+    let generated_path = fs::read_to_string(&marker_file).expect("read tmpfile marker");
+    assert!(
+        !Path::new(generated_path.trim()).exists(),
+        "tmpfile should be removed after child exit"
+    );
+
+    let _ = fs::remove_dir_all(temp_home);
+}

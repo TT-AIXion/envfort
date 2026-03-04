@@ -254,9 +254,26 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
             ));
         }
         InjectMode::Tmpfile => {
-            return Err(CliError::InvalidArgument(
-                "inject mode tmpfile not implemented yet".to_string(),
-            ));
+            let payload = build_secret_payload(&env_secrets);
+            let runtime_dir = ensure_runtime_secret_dir()?;
+            let file_path = runtime_dir.join(format!("envfort-secrets-{}.txt", Uuid::new_v4()));
+
+            fs::write(&file_path, payload.as_bytes())?;
+            fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600))?;
+
+            let mut child = Command::new(program);
+            child
+                .args(command_args)
+                .env("ENVFORT_SECRET_FILE", &file_path);
+
+            let status = child.status();
+            let cleanup_result = fs::remove_file(&file_path);
+
+            let status = status?;
+            if let Err(err) = cleanup_result {
+                return Err(CliError::Io(err));
+            }
+            status
         }
     };
     drop(env_secrets);
@@ -664,6 +681,16 @@ fn generate_random_kek() -> Result<KEK, CliError> {
     let kek = KEK::from_slice(&raw)?;
     raw.zeroize();
     Ok(kek)
+}
+
+fn ensure_runtime_secret_dir() -> Result<PathBuf, CliError> {
+    let base_dir = match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(path) => PathBuf::from(path).join("envfort"),
+        None => envfort_data_dir()?.join("run"),
+    };
+    fs::create_dir_all(&base_dir)?;
+    fs::set_permissions(&base_dir, fs::Permissions::from_mode(0o700))?;
+    Ok(base_dir)
 }
 
 fn disable_core_dumps() -> Result<(), CliError> {
