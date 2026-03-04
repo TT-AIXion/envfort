@@ -558,3 +558,63 @@ fn run_llm_safe_rejects_unknown_command() {
     assert!(stderr.contains("allowlist"), "stderr={stderr}");
     let _ = fs::remove_dir_all(temp_home);
 }
+
+#[test]
+fn full_workflow_init_set_list_run() {
+    let temp_home = new_temp_home("full-workflow");
+
+    let init_status = create_base_command(&temp_home)
+        .args(["init", "--profile", TEST_PROFILE])
+        .status()
+        .expect("execute init");
+    assert!(init_status.success(), "init failed: {init_status:?}");
+
+    let mut set_child = create_base_command(&temp_home)
+        .args(["set", "API_TOKEN", "--profile", TEST_PROFILE])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn set");
+    set_child
+        .stdin
+        .take()
+        .expect("set stdin")
+        .write_all(b"workflow-secret\n")
+        .expect("write secret");
+    let set_output = set_child.wait_with_output().expect("wait set");
+    assert!(
+        set_output.status.success(),
+        "set failed: stdout={}, stderr={}",
+        String::from_utf8_lossy(&set_output.stdout),
+        String::from_utf8_lossy(&set_output.stderr)
+    );
+
+    let list_output = create_base_command(&temp_home)
+        .args(["list", "--profile", TEST_PROFILE])
+        .output()
+        .expect("execute list");
+    assert!(list_output.status.success(), "list failed");
+    let listed = String::from_utf8_lossy(&list_output.stdout);
+    assert!(listed.contains("API_TOKEN"), "list output={listed}");
+
+    allowlist_python3(&temp_home);
+    let run_status = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--ci",
+            "--inject",
+            "env",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; sys.exit(0 if os.environ.get('API_TOKEN')=='workflow-secret' else 1)",
+        ])
+        .status()
+        .expect("execute run");
+    assert!(run_status.success(), "run failed: {run_status:?}");
+
+    let _ = fs::remove_dir_all(temp_home);
+}

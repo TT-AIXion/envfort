@@ -6,7 +6,7 @@ mod storage;
 mod ui;
 
 use std::fs;
-use std::io::{self, ErrorKind, Write};
+use std::io::{self, BufRead, ErrorKind, IsTerminal, Write};
 use std::os::fd::RawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
@@ -129,8 +129,8 @@ fn cmd_init(args: &InitArgs) -> Result<(), CliError> {
     db.set_meta("current_profile", &args.profile)?;
 
     let kek = generate_random_kek()?;
-    let keychain = OsKeychain;
-    keychain.store_kek(&args.profile, &kek)?;
+    let backend = get_backend();
+    backend.store_kek(&args.profile, &kek)?;
 
     println!(
         "initialized profile={} db={}",
@@ -148,7 +148,7 @@ fn cmd_set(args: &SetArgs) -> Result<(), CliError> {
     let kek = backend.retrieve_kek(&args.profile)?;
 
     let prompt = format!("value for {}: ", args.key);
-    let secret_value = Zeroizing::new(prompt_password(prompt)?);
+    let secret_value = Zeroizing::new(prompt_secret_value(&prompt)?);
     if secret_value.is_empty() {
         return Err(CliError::InvalidArgument(
             "secret value is empty".to_string(),
@@ -187,6 +187,28 @@ fn cmd_set(args: &SetArgs) -> Result<(), CliError> {
     db.log_audit("set", Some(&args.key), Some(&args.profile), None)?;
     println!("stored key={} profile={}", args.key, args.profile);
     Ok(())
+}
+
+fn prompt_secret_value(prompt: &str) -> Result<String, CliError> {
+    match prompt_password(prompt) {
+        Ok(value) => Ok(value),
+        Err(tty_err) => {
+            if io::stdin().is_terminal() {
+                return Err(CliError::Io(tty_err));
+            }
+
+            eprint!("{prompt}");
+            io::stderr().flush()?;
+
+            let mut value = String::new();
+            let mut reader = io::BufReader::new(io::stdin());
+            reader.read_line(&mut value)?;
+            while value.ends_with('\n') || value.ends_with('\r') {
+                value.pop();
+            }
+            Ok(value)
+        }
+    }
 }
 
 fn cmd_list(args: &ListArgs) -> Result<(), CliError> {
