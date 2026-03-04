@@ -736,4 +736,26 @@ mod tests {
             decrypt_value(&unwrapped, &stored.nonce, &stored.ciphertext, &aad_new).expect("decrypt");
         assert_eq!(plaintext, b"secret-value");
     }
+
+    #[test]
+    fn profile_create_list_delete() {
+        let db = VaultDb::init_in_memory().expect("init db");
+
+        db.create_profile("default").expect("create default");
+        db.create_profile("staging").expect("create staging");
+        db.create_profile("default")
+            .expect("create duplicate default");
+
+        let profiles = db.list_profiles().expect("list profiles");
+        assert_eq!(
+            profiles,
+            vec!["default".to_string(), "staging".to_string()]
+        );
+
+        assert!(db.delete_profile("staging").expect("delete staging"));
+        assert!(!db.delete_profile("missing").expect("delete missing"));
+
+        let profiles_after = db.list_profiles().expect("list profiles after delete");
+        assert_eq!(profiles_after, vec!["default".to_string()]);
+    }
 }
