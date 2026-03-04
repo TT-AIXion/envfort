@@ -19,6 +19,7 @@ pub enum Commands {
     Export(ExportArgs),
     Import(ImportArgs),
     Audit(AuditArgs),
+    Kdf(KdfArgs),
     Profile(ProfileArgs),
 }
 
@@ -87,6 +88,23 @@ pub struct ImportArgs {
 pub struct AuditArgs {
     #[arg(long, default_value_t = 20)]
     pub tail: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct KdfArgs {
+    #[command(subcommand)]
+    pub command: KdfCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum KdfCommands {
+    Calibrate(KdfCalibrateArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct KdfCalibrateArgs {
+    #[arg(long)]
+    pub target_ms: u64,
 }
 
 #[derive(Debug, Args)]

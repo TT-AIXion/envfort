@@ -9,21 +9,23 @@ use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 
+use argon2::{Algorithm, Argon2, Params, Version};
 use rpassword::prompt_password;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, ListArgs, ProfileCommands, RemoveArgs,
-    RotateKekArgs, RunArgs, SetArgs, parse_cli,
+    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, KdfArgs, KdfCalibrateArgs,
+    KdfCommands, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs, SetArgs, parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
     wrap_dek,
 };
-use crate::error::{CliError, KeychainError};
+use crate::error::{CliError, CryptoError, KeychainError};
 use crate::keychain::{KeychainBackend, OsKeychain, get_backend};
 use crate::storage::{SecretRecord, VaultDb};
 
@@ -66,6 +68,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::Export(args) => cmd_export(&args)?,
         Commands::Import(args) => cmd_import(&args)?,
         Commands::Audit(args) => cmd_audit(&args)?,
+        Commands::Kdf(args) => cmd_kdf(args)?,
         Commands::Profile(args) => cmd_profile(args.command)?,
     }
 
@@ -394,6 +397,69 @@ fn cmd_audit(args: &AuditArgs) -> Result<(), CliError> {
             entry.timestamp, entry.action, profile, key_name, detail
         );
     }
+    Ok(())
+}
+
+fn cmd_kdf(args: KdfArgs) -> Result<(), CliError> {
+    match args.command {
+        KdfCommands::Calibrate(calibrate_args) => cmd_kdf_calibrate(&calibrate_args),
+    }
+}
+
+fn cmd_kdf_calibrate(args: &KdfCalibrateArgs) -> Result<(), CliError> {
+    if args.target_ms == 0 {
+        return Err(CliError::InvalidArgument(
+            "--target-ms must be greater than 0".to_string(),
+        ));
+    }
+
+    let candidates_m = [8_192_u32, 16_384, 32_768, 65_536, 131_072];
+    let candidates_t = [1_u32, 2, 3, 4];
+    let p_cost = 4_u32;
+    let passphrase = b"envfort-kdf-calibration-passphrase";
+    let salt = b"0123456789abcdef";
+
+    let mut best_under: Option<(u32, u32, u32, u64)> = None;
+    let mut best_over: Option<(u32, u32, u32, u64)> = None;
+
+    for m_cost in candidates_m {
+        for t_cost in candidates_t {
+            let params = Params::new(m_cost, t_cost, p_cost, Some(KEY_SIZE))
+                .map_err(|err| CliError::Crypto(CryptoError::Argon2(err.to_string())))?;
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+            let mut output = [0_u8; KEY_SIZE];
+            let started = Instant::now();
+            argon2
+                .hash_password_into(passphrase, salt, &mut output)
+                .map_err(|err| CliError::Crypto(CryptoError::Argon2(err.to_string())))?;
+            output.zeroize();
+
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            if elapsed_ms <= args.target_ms {
+                match best_under {
+                    Some((_, _, _, best_ms)) if best_ms >= elapsed_ms => {}
+                    _ => best_under = Some((m_cost, t_cost, p_cost, elapsed_ms)),
+                }
+            } else {
+                match best_over {
+                    Some((_, _, _, best_ms)) if best_ms <= elapsed_ms => {}
+                    _ => best_over = Some((m_cost, t_cost, p_cost, elapsed_ms)),
+                }
+            }
+        }
+    }
+
+    let (m_cost, t_cost, p_cost, elapsed_ms) = best_under.or(best_over).ok_or_else(|| {
+        CliError::InvalidArgument("failed to derive calibration result".to_string())
+    })?;
+
+    let db = open_default_db()?;
+    let value = format!("argon2id:m={m_cost},t={t_cost},p={p_cost}");
+    db.set_meta("kdf_params", &value)?;
+    db.log_audit("kdf-calibrate", None, None, Some(&format!("target_ms={}", args.target_ms)))?;
+
+    println!("recommended {value} measured_ms={elapsed_ms}");
     Ok(())
 }
 
