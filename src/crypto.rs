@@ -80,8 +80,7 @@ pub struct AadData {
 
 impl AadData {
     pub fn to_aad_bytes(&self) -> Result<Vec<u8>, CryptoError> {
-        bincode::serialize(self)
-            .map_err(|err| CryptoError::AadSerialization(err.to_string()))
+        bincode::serialize(self).map_err(|err| CryptoError::AadSerialization(err.to_string()))
     }
 }
 
@@ -254,16 +253,16 @@ mod tests {
 
         assert_eq!(decrypted, plaintext);
 
-        let kek = derive_kek_from_passphrase(
-            "correct horse battery staple",
-            b"0123456789abcdef",
-        )
-        .expect("derive KEK");
+        let kek = derive_kek_from_passphrase("correct horse battery staple", b"0123456789abcdef")
+            .expect("derive KEK");
         let (wrap_nonce, encrypted_dek) = wrap_dek(&kek, &dek, &aad).expect("wrap DEK");
-        let unwrapped_dek = unwrap_dek(&kek, &wrap_nonce, &encrypted_dek, &aad).expect("unwrap DEK");
+        let unwrapped_dek =
+            unwrap_dek(&kek, &wrap_nonce, &encrypted_dek, &aad).expect("unwrap DEK");
 
-        let (nonce2, ciphertext2) = encrypt_value(&unwrapped_dek, plaintext, &aad).expect("encrypt");
-        let decrypted2 = decrypt_value(&unwrapped_dek, &nonce2, &ciphertext2, &aad).expect("decrypt");
+        let (nonce2, ciphertext2) =
+            encrypt_value(&unwrapped_dek, plaintext, &aad).expect("encrypt");
+        let decrypted2 =
+            decrypt_value(&unwrapped_dek, &nonce2, &ciphertext2, &aad).expect("decrypt");
         assert_eq!(decrypted2, plaintext);
     }
 

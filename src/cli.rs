@@ -21,14 +21,13 @@ pub enum Commands {
 pub struct InitArgs {
     #[arg(long, default_value = "default")]
     pub profile: String,
-    #[arg(long, default_value = "envfort.db")]
+    #[arg(long, default_value = "vault.db")]
     pub db: String,
 }
 
 #[derive(Debug, Args)]
 pub struct SetArgs {
     pub key: String,
-    pub value: String,
     #[arg(long, default_value = "default")]
     pub profile: String,
 }
@@ -62,13 +61,13 @@ pub struct ProfileArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ProfileCommands {
-    Use(ProfileUseArgs),
-    Current,
+    Create(ProfileNameArgs),
+    Delete(ProfileNameArgs),
     List,
 }
 
 #[derive(Debug, Args)]
-pub struct ProfileUseArgs {
+pub struct ProfileNameArgs {
     pub name: String,
 }
 

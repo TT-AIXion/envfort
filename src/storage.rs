@@ -80,6 +80,11 @@ impl VaultDb {
               v TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS profiles(
+              name       TEXT PRIMARY KEY,
+              created_at INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS audit_log(
               id        INTEGER PRIMARY KEY,
               timestamp INTEGER NOT NULL,
@@ -170,13 +175,46 @@ impl VaultDb {
     }
 
     pub fn list_secrets(&self, profile: &str) -> Result<Vec<String>, StorageError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT key_name FROM secrets WHERE profile = ?1 ORDER BY key_name ASC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key_name FROM secrets WHERE profile = ?1 ORDER BY key_name ASC")?;
 
         let rows = stmt.query_map(params![profile], |row| row.get::<_, String>(0))?;
         let key_names = rows.collect::<Result<Vec<_>, _>>()?;
         Ok(key_names)
+    }
+
+    pub fn list_secret_records(&self, profile: &str) -> Result<Vec<StoredSecret>, StorageError> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT
+                id, profile, key_name, key_id, kek_id, version, aead_alg,
+                nonce, encrypted_dek, ciphertext, created_at, updated_at
+            FROM secrets
+            WHERE profile = ?1
+            ORDER BY key_name ASC
+            ",
+        )?;
+
+        let rows = stmt.query_map(params![profile], |row| {
+            Ok(StoredSecret {
+                id: row.get(0)?,
+                profile: row.get(1)?,
+                key_name: row.get(2)?,
+                key_id: row.get(3)?,
+                kek_id: row.get(4)?,
+                version: row.get(5)?,
+                aead_alg: row.get(6)?,
+                nonce: row.get(7)?,
+                encrypted_dek: row.get(8)?,
+                ciphertext: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+
+        let records = rows.collect::<Result<Vec<_>, _>>()?;
+        Ok(records)
     }
 
     pub fn delete_secret(&self, profile: &str, key_name: &str) -> Result<bool, StorageError> {
@@ -191,7 +229,9 @@ impl VaultDb {
     pub fn get_meta(&self, key: &str) -> Result<Option<String>, StorageError> {
         let value = self
             .conn
-            .query_row("SELECT v FROM meta WHERE k = ?1", params![key], |row| row.get(0))
+            .query_row("SELECT v FROM meta WHERE k = ?1", params![key], |row| {
+                row.get(0)
+            })
             .optional()?;
 
         Ok(value)
@@ -209,6 +249,46 @@ impl VaultDb {
         )?;
 
         Ok(())
+    }
+
+    pub fn create_profile(&self, profile: &str) -> Result<(), StorageError> {
+        let now = Utc::now().timestamp();
+        self.conn.execute(
+            "
+            INSERT INTO profiles(name, created_at)
+            VALUES (?1, ?2)
+            ON CONFLICT(name) DO NOTHING
+            ",
+            params![profile, now],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn list_profiles(&self) -> Result<Vec<String>, StorageError> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT name
+            FROM (
+                SELECT name FROM profiles
+                UNION
+                SELECT DISTINCT profile AS name FROM secrets
+            )
+            ORDER BY name ASC
+            ",
+        )?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let profiles = rows.collect::<Result<Vec<_>, _>>()?;
+        Ok(profiles)
+    }
+
+    pub fn delete_profile(&self, profile: &str) -> Result<bool, StorageError> {
+        self.conn
+            .execute("DELETE FROM secrets WHERE profile = ?1", params![profile])?;
+        let affected = self
+            .conn
+            .execute("DELETE FROM profiles WHERE name = ?1", params![profile])?;
+        Ok(affected > 0)
     }
 
     pub fn log_audit(
@@ -297,20 +377,23 @@ mod tests {
             .expect("count audit rows");
         assert_eq!(audit_count, 1);
 
-        assert!(db
-            .delete_secret("default", "API_TOKEN")
-            .expect("delete secret"));
-        assert!(db
-            .get_secret("default", "API_TOKEN")
-            .expect("get after delete")
-            .is_none());
+        assert!(
+            db.delete_secret("default", "API_TOKEN")
+                .expect("delete secret")
+        );
+        assert!(
+            db.get_secret("default", "API_TOKEN")
+                .expect("get after delete")
+                .is_none()
+        );
         assert_eq!(
             db.list_secrets("default").expect("list after delete"),
             Vec::<String>::new()
         );
-        assert!(!db
-            .delete_secret("default", "API_TOKEN")
-            .expect("delete absent secret"));
+        assert!(
+            !db.delete_secret("default", "API_TOKEN")
+                .expect("delete absent secret")
+        );
     }
 
     #[test]
@@ -345,16 +428,19 @@ mod tests {
             vec!["SHARED_KEY".to_string()]
         );
 
-        assert!(db
-            .delete_secret("profile-a", "SHARED_KEY")
-            .expect("delete profile-a"));
-        assert!(db
-            .get_secret("profile-a", "SHARED_KEY")
-            .expect("get profile-a after delete")
-            .is_none());
-        assert!(db
-            .get_secret("profile-b", "SHARED_KEY")
-            .expect("get profile-b remains")
-            .is_some());
+        assert!(
+            db.delete_secret("profile-a", "SHARED_KEY")
+                .expect("delete profile-a")
+        );
+        assert!(
+            db.get_secret("profile-a", "SHARED_KEY")
+                .expect("get profile-a after delete")
+                .is_none()
+        );
+        assert!(
+            db.get_secret("profile-b", "SHARED_KEY")
+                .expect("get profile-b remains")
+                .is_some()
+        );
     }
 }
