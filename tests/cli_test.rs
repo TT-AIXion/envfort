@@ -267,3 +267,50 @@ fn run_inject_stdin_mode_works() {
     assert!(status.success(), "stdin injection failed: {status:?}");
     let _ = fs::remove_dir_all(temp_home);
 }
+
+#[test]
+fn run_inject_fd_mode_works() {
+    let temp_home = new_temp_home("inject-fd");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+
+    let status = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--inject",
+            "fd",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; fd=int(os.environ['ENVFORT_SECRET_FD']); data=os.read(fd,4096).decode(); sys.exit(0 if 'MY_SECRET=s3cr3t' in data.splitlines() else 1)",
+        ])
+        .status()
+        .expect("execute run --inject fd");
+
+    assert!(status.success(), "fd injection failed: {status:?}");
+    let _ = fs::remove_dir_all(temp_home);
+}
+
+#[test]
+fn run_llm_safe_defaults_to_fd() {
+    let temp_home = new_temp_home("inject-llm-safe");
+    seed_secret_for_run(&temp_home, "MY_SECRET", "s3cr3t");
+
+    let status = create_base_command(&temp_home)
+        .args([
+            "run",
+            "--profile",
+            TEST_PROFILE,
+            "--llm-safe",
+            "--",
+            "python3",
+            "-c",
+            "import os,sys; fd=int(os.environ['ENVFORT_SECRET_FD']); data=os.read(fd,4096).decode(); sys.exit(0 if 'MY_SECRET=s3cr3t' in data.splitlines() else 1)",
+        ])
+        .status()
+        .expect("execute run --llm-safe");
+
+    assert!(status.success(), "llm-safe fd injection failed: {status:?}");
+    let _ = fs::remove_dir_all(temp_home);
+}

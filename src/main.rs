@@ -6,6 +6,7 @@ mod storage;
 
 use std::fs;
 use std::io::{self, Write};
+use std::os::fd::RawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -231,9 +232,21 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
             child.wait()?
         }
         InjectMode::Fd => {
-            return Err(CliError::InvalidArgument(
-                "inject mode fd not implemented yet".to_string(),
-            ));
+            let payload = build_secret_payload(&env_secrets);
+            let (read_fd, write_fd) = create_pipe()?;
+
+            let mut child = Command::new(program);
+            child
+                .args(command_args)
+                .env("ENVFORT_SECRET_FD", read_fd.to_string());
+
+            let mut child = child.spawn()?;
+            write_all_to_fd(write_fd, payload.as_bytes())?;
+            close_fd(write_fd)?;
+
+            let status = child.wait()?;
+            close_fd(read_fd)?;
+            status
         }
         InjectMode::Socket => {
             return Err(CliError::InvalidArgument(
@@ -254,6 +267,41 @@ fn cmd_run(args: &RunArgs) -> Result<(), CliError> {
 
     let code = status.code().unwrap_or(1);
     std::process::exit(code);
+}
+
+fn create_pipe() -> Result<(RawFd, RawFd), CliError> {
+    let mut fds = [0_i32; 2];
+    // SAFETY: `fds` points to valid memory for two file descriptors.
+    let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(CliError::Io(io::Error::last_os_error()));
+    }
+    Ok((fds[0], fds[1]))
+}
+
+fn write_all_to_fd(fd: RawFd, mut data: &[u8]) -> Result<(), CliError> {
+    while !data.is_empty() {
+        // SAFETY: `data` pointer/length are valid for read, `fd` comes from `pipe`.
+        let written = unsafe { libc::write(fd, data.as_ptr().cast(), data.len()) };
+        if written < 0 {
+            return Err(CliError::Io(io::Error::last_os_error()));
+        }
+
+        let written = usize::try_from(written).map_err(|_| {
+            CliError::Io(io::Error::other("negative write result"))
+        })?;
+        data = &data[written..];
+    }
+    Ok(())
+}
+
+fn close_fd(fd: RawFd) -> Result<(), CliError> {
+    // SAFETY: closing a valid fd from `pipe`.
+    let rc = unsafe { libc::close(fd) };
+    if rc == 0 {
+        return Ok(());
+    }
+    Err(CliError::Io(io::Error::last_os_error()))
 }
 
 fn resolve_inject_mode(args: &RunArgs) -> InjectMode {
