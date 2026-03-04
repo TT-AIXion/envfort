@@ -312,4 +312,49 @@ mod tests {
         let decrypted = decrypt_value(&dek, &nonce, &ciphertext, &aad).expect("decrypt");
         assert_eq!(decrypted, plaintext);
     }
+
+    #[test]
+    fn aad_mismatch_fails_dek_unwrap() {
+        let kek = derive_kek_from_passphrase("same-pass", b"0123456789abcdef").expect("derive KEK");
+        let dek = generate_dek().expect("generate DEK");
+        let aad = sample_aad();
+
+        let mut wrong_aad = aad.clone();
+        wrong_aad.profile_id = "other-profile".to_string();
+
+        let (nonce, encrypted_dek) = wrap_dek(&kek, &dek, &aad).expect("wrap DEK");
+        let result = unwrap_dek(&kek, &nonce, &encrypted_dek, &wrong_aad);
+        assert!(matches!(result, Err(CryptoError::DecryptionFailed)));
+    }
+
+    #[test]
+    fn wrong_kek_fails_unwrap() {
+        let aad = sample_aad();
+        let dek = generate_dek().expect("generate DEK");
+        let kek_a = derive_kek_from_passphrase("kek-a", b"0123456789abcdef").expect("derive kek a");
+        let kek_b = derive_kek_from_passphrase("kek-b", b"0123456789abcdef").expect("derive kek b");
+
+        let (nonce, encrypted_dek) = wrap_dek(&kek_a, &dek, &aad).expect("wrap DEK");
+        let result = unwrap_dek(&kek_b, &nonce, &encrypted_dek, &aad);
+        assert!(matches!(result, Err(CryptoError::DecryptionFailed)));
+    }
+
+    #[test]
+    fn nonce_uniqueness_across_many_encryptions() {
+        let dek = generate_dek().expect("generate DEK");
+        let aad = sample_aad();
+        let mut seen = HashSet::new();
+
+        for _ in 0..512 {
+            let (nonce, _) = encrypt_value(&dek, b"nonce-check", &aad).expect("encrypt");
+            assert!(seen.insert(nonce), "nonce collision detected");
+        }
+    }
+
+    #[test]
+    fn zeroize_clears_buffer() {
+        let mut buf = vec![0xAB_u8; 64];
+        buf.zeroize();
+        assert!(buf.iter().all(|byte| *byte == 0));
+    }
 }
