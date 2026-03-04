@@ -1,96 +1,177 @@
 # envfort
 
-Write-only environment variable vault for local development and automation.
-Secrets are encrypted at rest, decrypted only for child-process injection, and never exposed via a `get`/`show` command.
+`envfort` is a write-only secret vault for environment-variable injection.
+Secrets are encrypted at rest, stored in SQLite, KEK-protected in OS keychain, and decrypted only for short-lived command execution.
 
 ## Features
 
-- Rust single-binary CLI
-- Envelope encryption (KEK/DEK)
-- AES-256-GCM-SIV secret encryption
-- Argon2id key derivation support for passphrase backend
-- OS keychain integration (`keyring`) for KEK storage
-- SQLite-backed encrypted secret store
-- Write-only flow: `set`, `list`, `run`, `rm`
+- Write-only secret workflow (`set`, `list`, `run`, `rm`)
+- Envelope encryption (`KEK` and per-secret `DEK`)
+- AEAD encryption with `AES-256-GCM-SIV`
+- Argon2id support and `kdf calibrate` command
+- OS keychain integration via `keyring`
+- Transactional KEK rotation (`rotate-kek`) with progress metadata
+- Encrypted backup export/import (`export --encrypted`, `import --encrypted`)
+- Local audit log with tail view (`audit --tail`)
+- Profile isolation (`profile create|list|delete`)
 
 ## Installation
 
-Install from crates.io:
+### Cargo
 
 ```bash
 cargo install envfort --locked
 ```
 
-Build from source:
+### Homebrew
 
 ```bash
-git clone <your-fork-or-repo-url>
-cd envfort
-cargo build --release
+brew tap tt-aixion/tap
+brew install envfort
 ```
+
+### GitHub Releases
+
+Download prebuilt binaries from Releases page and place `envfort` in your `PATH`.
 
 ## Usage
 
-### Initialize vault
+### init
 
 ```bash
 envfort init --profile default
 ```
 
-Creates `~/.envfort/` (mode `0700`), initializes `vault.db`, generates a random 32-byte KEK, and stores the KEK in OS keychain.
+Creates `~/.envfort/` (`0700`), initializes `vault.db`, and stores generated KEK in OS keychain.
 
-### Set a secret
+### set
 
 ```bash
 envfort set API_TOKEN --profile default
 ```
 
-You will be prompted securely for the value (no echo).
+Prompts securely for secret value (no terminal echo).
 
-### List keys
+### list
 
 ```bash
 envfort list --profile default
 ```
 
-Prints key names only (never plaintext values).
+Shows key names only.
 
-### Run a command with injected secrets
+### run
 
 ```bash
 envfort run --profile default -- env | grep API_TOKEN
 ```
 
-Loads secrets for the profile, decrypts in-memory, injects as environment variables, executes the child command, and zeroizes temporary plaintext buffers.
+Decrypts in memory, injects env vars to child process, then zeroizes buffers.
 
-### Remove a secret
+### rm
 
 ```bash
 envfort rm API_TOKEN --profile default
 ```
 
-Prompts for confirmation before deletion.
+Deletes a secret after confirmation prompt.
+
+### rotate-kek
+
+```bash
+envfort rotate-kek --profile default
+```
+
+Generates new KEK and re-wraps profile DEKs in a DB transaction.
+
+### export
+
+```bash
+envfort export --encrypted --output ./backups/vault.db.enc --profile default
+```
+
+Exports encrypted backup only (no plaintext export mode).
+
+### import
+
+```bash
+envfort import --encrypted ./backups/vault.db.enc --profile default
+```
+
+Imports encrypted backup and restores `vault.db`.
+
+### audit
+
+```bash
+envfort audit --tail 50
+```
+
+Shows latest audit entries.
+
+### kdf calibrate
+
+```bash
+envfort kdf calibrate --target-ms 150
+```
+
+Benchmarks Argon2id candidates and stores recommended params in metadata.
+
+### profile
+
+```bash
+envfort profile create team-a
+envfort profile list
+envfort profile delete team-a
+```
+
+Manages profile namespace and profile-specific KEKs.
+
+### ui (placeholder)
+
+```bash
+envfort ui
+```
+
+Planned command. Current release does not provide a production UI yet.
+
+## Security Design Overview
+
+- `KEK`: stored in keychain backend (OS keychain or passphrase-derived fallback)
+- `DEK`: generated per secret, wrapped by KEK
+- `AAD`: binds record metadata (`profile_id`, `key_id`, `record_version`, `aead_alg`, `kek_id`)
+- `Storage`: encrypted BLOBs in SQLite (`PRAGMA secure_delete = ON`)
+- `Runtime`: decryption only during `run`/maintenance paths, then memory zeroization
+
+## Injection Modes
+
+| Mode | Command shape | Status | Notes |
+|---|---|---|---|
+| Environment variables | `envfort run -- <cmd>` | Implemented | Default mode |
+| Stdin payload | `envfort run --mode stdin -- <cmd>` | Planned | For tools reading from stdin |
+| File descriptor | `envfort run --mode fd -- <cmd>` | Planned | Avoids wide env exposure |
+| Unix socket | `envfort run --mode socket -- <cmd>` | Planned | Short-lived local channel |
+| Temporary file | `envfort run --mode tmpfile -- <cmd>` | Planned | Tight permissions, lifecycle cleanup |
 
 ## Threat Model
 
-This section reflects `skills/design-spec.md` Section C.
+From `.codex/skills/design-spec.md` Section C:
 
-1. Write-only is a UI and API constraint, not a cryptographic guarantee by itself.
-2. Same-user attacker is out of scope (a same-user process can run `envfort run env`).
-3. LLM/agent isolation requires an OS boundary (separate user account, container, or VM).
-4. Environment variables may be observable during process lifetime (for example via `/proc/<pid>/environ` on Linux).
-5. If a Web UI mode is used, browser-mediated threats (for example DNS rebinding or CSRF) must be considered.
+1. "Write-only is a UI constraint, not a cryptographic property."
+2. "Same-user attacker is out of scope (they can `envfort run env`)."
+3. "LLM/AI agent isolation requires OS boundary (separate user/container)."
+4. "Environment variables are visible via `/proc/<pid>/environ` during process lifetime."
+5. "Browser-mediated attacks (DNS rebinding/CSRF) apply when Web UI is active."
 
 ## Contributing
 
-1. Fork and create a feature branch from `develop`.
-2. Make focused changes with tests.
-3. Run checks before opening a PR:
+1. Branch from `develop`.
+2. Keep commits focused and use Conventional Commits.
+3. Run local quality gates before PR:
    - `cargo fmt`
    - `cargo clippy --all-targets -- -D warnings`
    - `cargo test`
-4. Use Conventional Commits (`feat:`, `fix:`, `chore:`, etc.).
-5. Open a pull request with a clear summary, rationale, and test evidence.
+4. Add/adjust tests for behavior changes.
+5. Open PR with summary, security impact, and verification logs.
 
 ## License
 
