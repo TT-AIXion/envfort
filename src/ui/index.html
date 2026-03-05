@@ -8,36 +8,79 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <main class="layout">
-      <header class="hero">
-        <h1>envfort</h1>
-        <p class="subtitle">Local write-only secret vault UI</p>
+    <main class="shell">
+      <header class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">Local Secret Vault</p>
+          <h1 id="hero-title">envfort</h1>
+          <p class="subtitle">Write-only secret management on localhost with profile isolation.</p>
+        </div>
+        <div class="hero-meta">
+          <p id="session-status" class="pill" data-state="pending">Connecting…</p>
+          <p id="active-profile-chip" class="chip">Profile: default</p>
+        </div>
       </header>
 
-      <section class="card" aria-labelledby="session-title">
-        <h2 id="session-title">Session</h2>
-        <p id="session-status">Connecting…</p>
+      <section class="status-card" aria-live="polite">
+        <p id="message" class="status status-info">Preparing UI…</p>
       </section>
 
-      <section class="card" aria-labelledby="profile-title">
-        <h2 id="profile-title">Profiles</h2>
-        <div class="row">
-          <label for="profile-select">Active profile</label>
-          <select id="profile-select"></select>
-          <button id="refresh-secrets" type="button">Refresh</button>
-        </div>
-        <div class="row stack-mobile">
-          <input id="profile-name" type="text" placeholder="new-profile" autocomplete="off" />
-          <button id="profile-create" type="button">Create</button>
-          <button id="profile-delete" type="button" class="danger">Delete Active</button>
-        </div>
-      </section>
+      <div class="dashboard">
+        <section class="panel session" aria-labelledby="session-title">
+          <div class="panel-head">
+            <h2 id="session-title">Session Status</h2>
+          </div>
+          <dl class="kv-list">
+            <div>
+              <dt>Authentication</dt>
+              <dd id="session-auth">Waiting for token</dd>
+            </div>
+            <div>
+              <dt>API health</dt>
+              <dd id="session-health">Not checked</dd>
+            </div>
+            <div>
+              <dt>Scope</dt>
+              <dd>Localhost + bearer token only</dd>
+            </div>
+          </dl>
+        </section>
 
-      <section class="card" aria-labelledby="set-title">
-        <h2 id="set-title">Set Secret</h2>
-        <form id="set-form" autocomplete="off">
-          <div class="row stack-mobile">
+        <section class="panel profiles" aria-labelledby="profiles-title">
+          <div class="panel-head">
+            <h2 id="profiles-title">Profile Management</h2>
+          </div>
+          <p class="help">Use separate profiles for different environments (for example: default, staging, prod).</p>
+
+          <div class="field-grid single">
+            <label for="profile-select">Active profile</label>
+            <div class="inline-row">
+              <select id="profile-select" aria-label="Active profile"></select>
+              <button id="refresh-secrets" type="button" class="btn btn-secondary">Refresh</button>
+            </div>
+          </div>
+
+          <div class="field-grid single">
+            <label for="profile-name">Create profile</label>
+            <div class="inline-row stack-mobile">
+              <input id="profile-name" type="text" placeholder="new-profile" autocomplete="off" />
+              <button id="profile-create" type="button" class="btn">Create</button>
+              <button id="profile-delete" type="button" class="btn btn-danger">Delete Active</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel secret" aria-labelledby="secret-title">
+          <div class="panel-head">
+            <h2 id="secret-title">Create Secret</h2>
+          </div>
+          <p class="help">Shortcut: press <kbd>n</kbd> to jump to key input. Use <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>Enter</kbd> to save.</p>
+
+          <form id="set-form" autocomplete="off" class="field-grid">
+            <label for="secret-key">Key name</label>
             <input id="secret-key" type="text" placeholder="KEY_NAME" required autocomplete="off" />
+
+            <label for="secret-value">Secret value</label>
             <input
               id="secret-value"
               type="password"
@@ -48,48 +91,62 @@
               autocapitalize="off"
               autocorrect="off"
             />
-            <button type="submit">Save</button>
+
+            <button id="set-submit" type="submit" class="btn">Save Secret</button>
+          </form>
+        </section>
+
+        <section class="panel import" aria-labelledby="import-title">
+          <div class="panel-head">
+            <h2 id="import-title">Import .env</h2>
           </div>
-        </form>
-      </section>
+          <p class="help">Import from file or paste raw .env text. Existing keys are updated by key name.</p>
 
-      <section class="card" aria-labelledby="import-title">
-        <h2 id="import-title">Import .env</h2>
-        <div class="row stack-mobile">
-          <input id="env-file" type="file" accept=".env,text/plain" />
-          <button id="import-file" type="button">Import File</button>
-        </div>
-        <textarea
-          id="env-paste"
-          placeholder="KEY=value"
-          autocomplete="off"
-          spellcheck="false"
-          autocapitalize="off"
-          autocorrect="off"
-        ></textarea>
-        <div class="row">
-          <button id="import-paste" type="button">Import Pasted .env</button>
-        </div>
-      </section>
+          <div class="field-grid">
+            <label for="env-file">.env file</label>
+            <div class="inline-row stack-mobile">
+              <input id="env-file" type="file" accept=".env,text/plain" />
+              <button id="import-file" type="button" class="btn btn-secondary">Import File</button>
+            </div>
 
-      <section class="card" aria-labelledby="list-title">
-        <h2 id="list-title">Keys</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Value</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="secret-list"></tbody>
-        </table>
-      </section>
+            <label for="env-paste">Paste content</label>
+            <textarea
+              id="env-paste"
+              placeholder="API_KEY=..."
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+              autocorrect="off"
+            ></textarea>
+            <button id="import-paste" type="button" class="btn">Import Pasted .env</button>
+          </div>
+        </section>
 
-      <section class="card" aria-live="polite">
-        <h2>Status</h2>
-        <p id="message"></p>
-      </section>
+        <section class="panel keys" aria-labelledby="keys-title">
+          <div class="panel-head">
+            <h2 id="keys-title">Keys List</h2>
+            <p id="keys-count" class="meta">0 keys</p>
+          </div>
+
+          <div class="inline-row stack-mobile table-tools">
+            <label for="keys-search" class="sr-only">Search keys</label>
+            <input id="keys-search" type="search" placeholder="Search keys (press /)" autocomplete="off" />
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Value</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="secret-list"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </main>
 
     <script type="module" src="/app.js"></script>
