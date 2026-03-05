@@ -13,6 +13,7 @@ pub enum Commands {
     Set(SetArgs),
     List(ListArgs),
     Run(RunArgs),
+    Allowlist(AllowlistArgs),
     Rm(RemoveArgs),
     #[command(name = "rotate-kek")]
     RotateKek(RotateKekArgs),
@@ -57,6 +58,24 @@ pub struct RunArgs {
     pub inject: Option<InjectMode>,
     #[arg(long, default_value_t = false)]
     pub llm_safe: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AllowlistArgs {
+    #[command(subcommand)]
+    pub command: AllowlistCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AllowlistCommands {
+    List,
+    Add(AllowlistCommandArgs),
+    Rm(AllowlistCommandArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct AllowlistCommandArgs {
+    pub command: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

@@ -212,6 +212,10 @@ fn help_exits_successfully() {
 #[test]
 fn subcommand_help_exits_successfully() {
     let subcommands = [
+        vec!["allowlist", "--help"],
+        vec!["allowlist", "list", "--help"],
+        vec!["allowlist", "add", "--help"],
+        vec!["allowlist", "rm", "--help"],
         vec!["rotate-kek", "--help"],
         vec!["export", "--help"],
         vec!["import", "--help"],
@@ -235,6 +239,49 @@ fn subcommand_help_exits_successfully() {
             "expected exit code 0 for args {args:?}, got status: {status:?}"
         );
     }
+}
+
+#[test]
+fn allowlist_add_list_rm_flow_works() {
+    let temp_home = new_temp_home("allowlist-cli-flow");
+    let python_path = resolve_python3_path();
+
+    let add_status = create_base_command(&temp_home)
+        .args(["allowlist", "add", "python3"])
+        .status()
+        .expect("execute allowlist add");
+    assert!(add_status.success(), "allowlist add failed: {add_status:?}");
+
+    let list_output = create_base_command(&temp_home)
+        .args(["allowlist", "list"])
+        .output()
+        .expect("execute allowlist list");
+    assert!(list_output.status.success(), "allowlist list failed");
+    let listed = String::from_utf8_lossy(&list_output.stdout);
+    assert!(listed.contains(&python_path), "list output={listed}");
+    assert!(listed.contains("sha256:"), "list output={listed}");
+
+    let rm_status = create_base_command(&temp_home)
+        .args(["allowlist", "rm", "python3"])
+        .status()
+        .expect("execute allowlist rm");
+    assert!(rm_status.success(), "allowlist rm failed: {rm_status:?}");
+
+    let list_after_output = create_base_command(&temp_home)
+        .args(["allowlist", "list"])
+        .output()
+        .expect("execute allowlist list after rm");
+    assert!(
+        list_after_output.status.success(),
+        "allowlist list after rm failed"
+    );
+    let listed_after = String::from_utf8_lossy(&list_after_output.stdout);
+    assert!(
+        !listed_after.contains(&python_path),
+        "allowlist entry should be removed: {listed_after}"
+    );
+
+    let _ = fs::remove_dir_all(temp_home);
 }
 
 #[test]

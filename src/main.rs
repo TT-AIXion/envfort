@@ -28,9 +28,9 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{
-    AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs, InjectMode, KdfArgs, KdfCalibrateArgs,
-    KdfCommands, ListArgs, ProfileCommands, RemoveArgs, RotateKekArgs, RunArgs, SetArgs, UiArgs,
-    parse_cli,
+    AllowlistCommandArgs, AllowlistCommands, AuditArgs, Commands, ExportArgs, ImportArgs, InitArgs,
+    InjectMode, KdfArgs, KdfCalibrateArgs, KdfCommands, ListArgs, ProfileCommands, RemoveArgs,
+    RotateKekArgs, RunArgs, SetArgs, UiArgs, parse_cli,
 };
 use crate::crypto::{
     AadData, KEK, KEY_SIZE, NONCE_SIZE, decrypt_value, encrypt_value, generate_dek, unwrap_dek,
@@ -106,6 +106,7 @@ fn dispatch_main() -> Result<(), CliError> {
         Commands::Set(args) => cmd_set(&args)?,
         Commands::List(args) => cmd_list(&args)?,
         Commands::Run(args) => cmd_run(&args)?,
+        Commands::Allowlist(args) => cmd_allowlist(args.command)?,
         Commands::Rm(args) => cmd_rm(&args)?,
         Commands::RotateKek(args) => cmd_rotate_kek(&args)?,
         Commands::Export(args) => cmd_export(&args)?,
@@ -217,6 +218,62 @@ fn cmd_list(args: &ListArgs) -> Result<(), CliError> {
     for name in names {
         println!("{name}");
     }
+    Ok(())
+}
+
+fn cmd_allowlist(command: AllowlistCommands) -> Result<(), CliError> {
+    match command {
+        AllowlistCommands::List => cmd_allowlist_list(),
+        AllowlistCommands::Add(args) => cmd_allowlist_add(&args),
+        AllowlistCommands::Rm(args) => cmd_allowlist_rm(&args),
+    }
+}
+
+fn cmd_allowlist_list() -> Result<(), CliError> {
+    let config = load_app_config()?;
+    for entry in config.run.allowlist.commands {
+        match entry.hash {
+            Some(hash) => println!("{} {}", entry.path, hash),
+            None => println!("{}", entry.path),
+        }
+    }
+    Ok(())
+}
+
+fn cmd_allowlist_add(args: &AllowlistCommandArgs) -> Result<(), CliError> {
+    let program_path = resolve_program_path(&args.command)?;
+    let hash = compute_sha256(&program_path)?;
+    let command_path = program_path.to_string_lossy().to_string();
+
+    let mut config = load_app_config()?;
+    upsert_allowlist_entry(
+        &mut config,
+        AllowlistCommand {
+            path: command_path.clone(),
+            hash: Some(format!("sha256:{hash}")),
+        },
+    );
+    save_app_config(&config)?;
+
+    println!("allowlisted command={command_path}");
+    Ok(())
+}
+
+fn cmd_allowlist_rm(args: &AllowlistCommandArgs) -> Result<(), CliError> {
+    let mut config = load_app_config()?;
+    let resolved = resolve_allowlist_lookup_path(&args.command);
+    let before = config.run.allowlist.commands.len();
+    config
+        .run
+        .allowlist
+        .commands
+        .retain(|entry| !allowlist_entry_matches(entry, &args.command, resolved.as_deref()));
+    let removed = before.saturating_sub(config.run.allowlist.commands.len());
+
+    if removed > 0 {
+        save_app_config(&config)?;
+    }
+    println!("removed allowlist entries={removed}");
     Ok(())
 }
 
@@ -584,6 +641,36 @@ fn resolve_program_path(program: &str) -> Result<PathBuf, CliError> {
         "command '{}' not found in PATH",
         program
     )))
+}
+
+fn resolve_allowlist_lookup_path(command: &str) -> Option<PathBuf> {
+    if let Ok(path) = resolve_program_path(command) {
+        return Some(path);
+    }
+
+    let command_path = Path::new(command);
+    if command_path.is_absolute() || command.contains(std::path::MAIN_SEPARATOR) {
+        return Some(normalize_path_for_comparison(command_path));
+    }
+
+    None
+}
+
+fn allowlist_entry_matches(
+    entry: &AllowlistCommand,
+    command: &str,
+    resolved_path: Option<&Path>,
+) -> bool {
+    if entry.path == command {
+        return true;
+    }
+
+    let Some(target_path) = resolved_path else {
+        return false;
+    };
+
+    let entry_path = normalize_path_for_comparison(Path::new(&entry.path));
+    entry_path.as_path() == target_path
 }
 
 fn normalize_path_for_comparison(path: &Path) -> PathBuf {

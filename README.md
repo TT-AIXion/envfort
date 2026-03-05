@@ -90,6 +90,20 @@ commands = [
 ]
 ```
 
+### allowlist
+
+```bash
+envfort allowlist list
+envfort allowlist add python3
+envfort allowlist rm python3
+```
+
+Manages `~/.envfort/config.toml` `[run.allowlist.commands]` entries for `run`.
+
+- `allowlist list`: shows current allowlisted commands.
+- `allowlist add <command>`: resolves executable path, computes SHA-256, and upserts entry.
+- `allowlist rm <command>`: removes matching path entry.
+
 ### rm
 
 ```bash
