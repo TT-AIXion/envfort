@@ -45,6 +45,11 @@ function setSessionState(text, status = "pending") {
   el.session.setAttribute("data-state", status);
 }
 
+function setMetaState(node, text, state = "pending") {
+  node.textContent = text;
+  node.dataset.state = state;
+}
+
 function setMessage(text, level = "info") {
   const normalized = level === "success" || level === "error" ? level : "info";
   el.message.textContent = `${STATUS_PREFIX[normalized]}: ${text}`;
@@ -123,7 +128,7 @@ async function fetchToken() {
   }
   state.token = (await res.text()).trim();
   setSessionState("Authenticated", "success");
-  el.sessionAuth.textContent = "Authenticated";
+  setMetaState(el.sessionAuth, "Authenticated", "success");
 }
 
 async function api(path, options = {}) {
@@ -159,10 +164,10 @@ async function api(path, options = {}) {
 async function checkHealth() {
   try {
     await api("/api/health");
-    el.sessionHealth.textContent = "Healthy";
+    setMetaState(el.sessionHealth, "Healthy", "success");
     return true;
   } catch {
-    el.sessionHealth.textContent = "Unavailable";
+    setMetaState(el.sessionHealth, "Unavailable", "error");
     return false;
   }
 }
@@ -536,8 +541,8 @@ async function init() {
     }
   } catch (err) {
     setSessionState("Failed", "error");
-    el.sessionAuth.textContent = "Failed";
-    el.sessionHealth.textContent = "Unavailable";
+    setMetaState(el.sessionAuth, "Failed", "error");
+    setMetaState(el.sessionHealth, "Unavailable", "error");
     setMessage(toErrorMessage(err), "error");
   }
 }

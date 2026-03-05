@@ -8,26 +8,63 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar" aria-labelledby="hero-title">
+    <main class="dashboard">
+      <header class="panel dashboard-header" aria-labelledby="dashboard-title">
         <div>
-          <p class="eyebrow">Localhost Secret Console</p>
-          <h1 id="hero-title">envfort dashboard</h1>
-          <p class="subtitle">Operate secrets in a single flow: add a key, search instantly, and verify profile status without context switching.</p>
+          <p class="eyebrow">envfort</p>
+          <h1 id="dashboard-title">Secrets Dashboard</h1>
+          <p class="subtitle">Simple, fast control panel for profiles and write-only secrets.</p>
         </div>
-        <div class="topbar-actions">
-          <p id="session-status" class="pill" data-state="pending">Connecting…</p>
+        <div class="header-session">
+          <p class="status-caption">Connection</p>
+          <p id="session-status" class="session-pill" data-state="pending">Connecting…</p>
         </div>
       </header>
 
-      <section class="panel command-center" aria-labelledby="actions-title">
+      <section class="kpi-grid" aria-label="Dashboard overview">
+        <article class="panel kpi-card">
+          <p class="kpi-label">Active profile</p>
+          <p id="active-profile-chip" class="kpi-value">default</p>
+        </article>
+        <article class="panel kpi-card">
+          <p class="kpi-label">Profiles</p>
+          <p id="stat-profiles" class="kpi-value">0</p>
+        </article>
+        <article class="panel kpi-card">
+          <p class="kpi-label">Keys</p>
+          <p id="stat-keys" class="kpi-value">0</p>
+        </article>
+        <article class="panel kpi-card">
+          <p class="kpi-label">Visible</p>
+          <p id="stat-visible" class="kpi-value">0</p>
+        </article>
+      </section>
+
+      <section class="panel status-panel" aria-labelledby="status-title" aria-live="polite">
         <div class="panel-head">
-          <h2 id="actions-title">Quick actions</h2>
-          <p class="meta">Primary workflow</p>
+          <h2 id="status-title">System status</h2>
+        </div>
+        <p id="message" class="status" data-level="info">Status: Preparing dashboard…</p>
+        <dl class="status-meta">
+          <div>
+            <dt>Authentication</dt>
+            <dd id="session-auth" data-state="pending">Waiting for token</dd>
+          </div>
+          <div>
+            <dt>API health</dt>
+            <dd id="session-health" data-state="pending">Checking</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel quick-panel" aria-labelledby="quick-actions-title">
+        <div class="panel-head">
+          <h2 id="quick-actions-title">Quick actions</h2>
         </div>
 
-        <div class="command-grid">
+        <div class="quick-actions-grid">
           <form id="set-form" autocomplete="off" class="quick-add-form">
+            <h3>Quick add secret</h3>
             <div class="quick-add-fields">
               <div>
                 <label for="secret-key">Secret key</label>
@@ -50,60 +87,60 @@
             <button id="set-submit" type="submit" class="btn">Add Secret</button>
           </form>
 
-          <div class="quick-search-wrap">
+          <div class="quick-box">
+            <h3>Search</h3>
             <label for="keys-search">Search keys</label>
             <input id="keys-search" type="search" placeholder="Filter by key name" autocomplete="off" class="search" />
           </div>
 
-          <div class="quick-refresh-wrap">
-            <button id="refresh-secrets" type="button" class="btn btn-secondary btn-refresh">Refresh Keys</button>
-            <p class="help tight">Reload key metadata for the selected profile.</p>
+          <div class="quick-box">
+            <h3>Refresh</h3>
+            <p class="help">Reload key metadata for the selected profile.</p>
+            <button id="refresh-secrets" type="button" class="btn btn-secondary">Refresh Keys</button>
           </div>
         </div>
       </section>
 
-      <section class="status-card" aria-live="polite">
-        <p id="message" class="status" data-level="info">Status: Preparing dashboard…</p>
-      </section>
+      <div class="layout-grid">
+        <section class="panel panel-keys" aria-labelledby="keys-title">
+          <div class="panel-head">
+            <h2 id="keys-title">Secrets</h2>
+            <p id="keys-count" class="meta">0 keys</p>
+          </div>
 
-      <div class="dashboard-grid">
+          <div class="table-wrap" role="region" aria-label="Secret keys list">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Masked Value</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="secret-list"></tbody>
+            </table>
+          </div>
+        </section>
+
         <aside class="side-column">
-          <section class="panel" aria-labelledby="session-title">
-            <div class="panel-head">
-              <h2 id="session-title">Session</h2>
-            </div>
-            <dl class="kv-list">
-              <div>
-                <dt>Authentication</dt>
-                <dd id="session-auth">Waiting for token</dd>
-              </div>
-              <div>
-                <dt>API health</dt>
-                <dd id="session-health">Checking</dd>
-              </div>
-              <div>
-                <dt>Active profile</dt>
-                <dd id="active-profile-chip">default</dd>
-              </div>
-            </dl>
-          </section>
-
           <section class="panel" aria-labelledby="profiles-title">
             <div class="panel-head">
               <h2 id="profiles-title">Profiles</h2>
             </div>
-            <p class="help">Profiles isolate secrets by environment to prevent accidental cross-use.</p>
+            <p class="help">Profiles isolate secrets by environment.</p>
 
             <label for="profile-select">Active profile</label>
             <select id="profile-select" aria-label="Active profile"></select>
 
-            <label for="profile-name" class="spacer-top">Create a new profile</label>
-            <input id="profile-name" type="text" placeholder="staging" autocomplete="off" />
-            <button id="profile-create" type="button" class="btn">Create &amp; Switch</button>
+            <label for="profile-name" class="spacer-top">Create profile</label>
+            <div class="inline-row stack-mobile">
+              <input id="profile-name" type="text" placeholder="staging" autocomplete="off" />
+              <button id="profile-create" type="button" class="btn">Create &amp; Switch</button>
+            </div>
 
             <div class="danger-zone" role="group" aria-labelledby="danger-zone-title">
-              <p id="danger-zone-title" class="danger-label">Danger zone</p>
-              <p class="danger-copy">Deleting a profile permanently removes every key in that profile.</p>
+              <p id="danger-zone-title" class="danger-label">Danger: delete profile</p>
+              <p class="danger-copy">This permanently deletes the selected profile and all keys in it.</p>
               <button id="profile-delete" type="button" class="btn btn-danger">Delete Active Profile</button>
               <p id="profile-danger-hint" class="danger-hint">The default profile is protected from deletion.</p>
             </div>
@@ -147,48 +184,6 @@
             </ul>
           </section>
         </aside>
-
-        <section class="main-column" aria-labelledby="keys-title">
-          <section class="panel" aria-labelledby="stats-title">
-            <div class="panel-head">
-              <h2 id="stats-title">Overview</h2>
-            </div>
-            <div class="stats-grid">
-              <article class="stat-card">
-                <p class="stat-label">Profiles</p>
-                <p id="stat-profiles" class="stat-value">0</p>
-              </article>
-              <article class="stat-card">
-                <p class="stat-label">Keys</p>
-                <p id="stat-keys" class="stat-value">0</p>
-              </article>
-              <article class="stat-card">
-                <p class="stat-label">Visible</p>
-                <p id="stat-visible" class="stat-value">0</p>
-              </article>
-            </div>
-          </section>
-
-          <section class="panel panel-keys" aria-labelledby="keys-title">
-            <div class="panel-head">
-              <h2 id="keys-title">Keys</h2>
-              <p id="keys-count" class="meta">0 keys</p>
-            </div>
-
-            <div class="table-wrap" role="region" aria-label="Secret keys list">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Key</th>
-                    <th>Masked Value</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="secret-list"></tbody>
-              </table>
-            </div>
-          </section>
-        </section>
       </div>
     </main>
 
