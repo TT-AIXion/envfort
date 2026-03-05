@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and support (GitHub Discussions)
+    url: https://github.com/TT-AIXion/envfort/discussions
+    about: Ask questions, share ideas, and request support.
+  - name: Security vulnerability report
+    url: https://github.com/TT-AIXion/envfort/security/policy
+    about: Please report vulnerabilities through the security policy channel.

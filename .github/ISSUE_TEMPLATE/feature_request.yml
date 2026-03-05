@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an improvement
+title: "[Feature] "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+      placeholder: Clear and concise problem description
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred solution
+      placeholder: Describe the solution and expected UX
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternatives or workarounds you considered
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Use cases, constraints, links, or screenshots

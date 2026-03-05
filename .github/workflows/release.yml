@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.2.3)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            ext: ""
+          - os: macos-latest
+            platform: macos
+            ext: ""
+          - os: windows-latest
+            platform: windows
+            ext: ".exe"
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package binary and checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binaryPath = "target/release/envfort${{ matrix.ext }}"
+          if (!(Test-Path $binaryPath)) {
+            throw "Missing build output: $binaryPath"
+          }
+
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $artifactName = "envfort-${{ matrix.platform }}${{ matrix.ext }}"
+          Copy-Item $binaryPath "dist/$artifactName"
+
+          $hash = (Get-FileHash "dist/$artifactName" -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "dist/$artifactName.sha256" -Value "$hash  $artifactName"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: envfort-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify checksums
+        run: |
+          cd dist
+          for f in *.sha256; do
+            sha256sum -c "$f"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist/envfort-linux
+            dist/envfort-macos
+            dist/envfort-windows.exe
+            dist/*.sha256
+          fail_on_unmatched_files: true

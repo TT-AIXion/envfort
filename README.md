@@ -198,6 +198,32 @@ From `.codex/skills/design-spec.md` Section C:
 4. "Environment variables are visible via `/proc/<pid>/environ` during process lifetime."
 5. "Browser-mediated attacks (DNS rebinding/CSRF) apply when Web UI is active."
 
+## Project Governance
+
+- Community standards are defined in `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1 based).
+- Ownership is defined in `.github/CODEOWNERS` (`@TT-AIXion`).
+- Contributions are guided by issue forms and pull request templates in `.github/`.
+
+## Support
+
+- Bug reports and feature requests: GitHub Issues (use templates).
+- Usage questions and general support: GitHub Discussions.
+- Security vulnerabilities: do **not** open public Issues; follow `SECURITY.md` and the security policy channel.
+
+## Release Process (Tag-based)
+
+- Releases are created from Git tags matching `v*` (for example: `v1.2.3`).
+- `.github/workflows/release.yml` builds binaries for Linux/macOS/Windows, generates SHA-256 checksums, and attaches artifacts to GitHub Releases.
+- `workflow_dispatch` is also available for manual re-run against an existing release tag.
+
+## Automerge Operations
+
+- PRs are eligible only when all conditions are met:
+  - `automerge` label is present
+  - PR is not draft
+  - latest `CI` workflow is successful
+- `.github/workflows/automerge.yml` enables GitHub auto-merge only when policy checks pass.
+
 ## Contributing
 
 1. Branch from `develop`.
