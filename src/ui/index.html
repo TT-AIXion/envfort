@@ -13,16 +13,57 @@
         <div>
           <p class="eyebrow">Localhost Secret Console</p>
           <h1 id="hero-title">envfort dashboard</h1>
-          <p class="subtitle">Write-only secret operations with profile isolation and quick import workflows.</p>
+          <p class="subtitle">Operate secrets in a single flow: add a key, search instantly, and verify profile status without context switching.</p>
         </div>
         <div class="topbar-actions">
           <p id="session-status" class="pill" data-state="pending">Connecting…</p>
-          <button id="refresh-secrets" type="button" class="btn btn-secondary">Refresh Keys</button>
         </div>
       </header>
 
+      <section class="panel command-center" aria-labelledby="actions-title">
+        <div class="panel-head">
+          <h2 id="actions-title">Quick actions</h2>
+          <p class="meta">Primary workflow</p>
+        </div>
+
+        <div class="command-grid">
+          <form id="set-form" autocomplete="off" class="quick-add-form">
+            <div class="quick-add-fields">
+              <div>
+                <label for="secret-key">Secret key</label>
+                <input id="secret-key" type="text" placeholder="API_KEY" required autocomplete="off" />
+              </div>
+              <div>
+                <label for="secret-value">Secret value</label>
+                <input
+                  id="secret-value"
+                  type="password"
+                  placeholder="Write-only value"
+                  required
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off"
+                />
+              </div>
+            </div>
+            <button id="set-submit" type="submit" class="btn">Add Secret</button>
+          </form>
+
+          <div class="quick-search-wrap">
+            <label for="keys-search">Search keys</label>
+            <input id="keys-search" type="search" placeholder="Filter by key name" autocomplete="off" class="search" />
+          </div>
+
+          <div class="quick-refresh-wrap">
+            <button id="refresh-secrets" type="button" class="btn btn-secondary btn-refresh">Refresh Keys</button>
+            <p class="help tight">Reload key metadata for the selected profile.</p>
+          </div>
+        </div>
+      </section>
+
       <section class="status-card" aria-live="polite">
-        <p id="message" class="status">Preparing dashboard…</p>
+        <p id="message" class="status" data-level="info">Status: Preparing dashboard…</p>
       </section>
 
       <div class="dashboard-grid">
@@ -38,7 +79,7 @@
               </div>
               <div>
                 <dt>API health</dt>
-                <dd id="session-health">Not checked</dd>
+                <dd id="session-health">Checking</dd>
               </div>
               <div>
                 <dt>Active profile</dt>
@@ -51,16 +92,47 @@
             <div class="panel-head">
               <h2 id="profiles-title">Profiles</h2>
             </div>
-            <p class="help">Keep secrets separated by environment.</p>
+            <p class="help">Profiles isolate secrets by environment to prevent accidental cross-use.</p>
+
             <label for="profile-select">Active profile</label>
             <select id="profile-select" aria-label="Active profile"></select>
 
-            <label for="profile-name" class="spacer-top">Create profile</label>
-            <input id="profile-name" type="text" placeholder="new-profile" autocomplete="off" />
+            <label for="profile-name" class="spacer-top">Create a new profile</label>
+            <input id="profile-name" type="text" placeholder="staging" autocomplete="off" />
+            <button id="profile-create" type="button" class="btn">Create &amp; Switch</button>
 
-            <div class="btn-stack">
-              <button id="profile-create" type="button" class="btn">Create Profile</button>
-              <button id="profile-delete" type="button" class="btn btn-danger">Delete Active</button>
+            <div class="danger-zone" role="group" aria-labelledby="danger-zone-title">
+              <p id="danger-zone-title" class="danger-label">Danger zone</p>
+              <p class="danger-copy">Deleting a profile permanently removes every key in that profile.</p>
+              <button id="profile-delete" type="button" class="btn btn-danger">Delete Active Profile</button>
+              <p id="profile-danger-hint" class="danger-hint">The default profile is protected from deletion.</p>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="import-title">
+            <div class="panel-head">
+              <h2 id="import-title">Import .env</h2>
+            </div>
+            <div class="import-grid">
+              <div>
+                <label for="env-file">From file</label>
+                <div class="inline-row stack-mobile">
+                  <input id="env-file" type="file" accept=".env,text/plain" />
+                  <button id="import-file" type="button" class="btn btn-secondary">Import File</button>
+                </div>
+              </div>
+              <div>
+                <label for="env-paste">Paste .env content</label>
+                <textarea
+                  id="env-paste"
+                  placeholder="DATABASE_URL=..."
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off"
+                ></textarea>
+                <button id="import-paste" type="button" class="btn">Import Pasted .env</button>
+              </div>
             </div>
           </section>
 
@@ -71,12 +143,12 @@
             <ul class="shortcut-list">
               <li><kbd>n</kbd> focus key input</li>
               <li><kbd>/</kbd> focus key search</li>
-              <li><kbd>⌘/Ctrl + Enter</kbd> save secret</li>
+              <li><kbd>⌘/Ctrl + Enter</kbd> save secret value</li>
             </ul>
           </section>
         </aside>
 
-        <section class="main-column" aria-labelledby="secrets-title">
+        <section class="main-column" aria-labelledby="keys-title">
           <section class="panel" aria-labelledby="stats-title">
             <div class="panel-head">
               <h2 id="stats-title">Overview</h2>
@@ -97,74 +169,18 @@
             </div>
           </section>
 
-          <section class="panel" aria-labelledby="secrets-title">
-            <div class="panel-head">
-              <h2 id="secrets-title">Create Secret</h2>
-            </div>
-            <p class="help">New values are write-only. Existing keys are replaced by key name.</p>
-            <form id="set-form" autocomplete="off" class="input-grid">
-              <div>
-                <label for="secret-key">Key name</label>
-                <input id="secret-key" type="text" placeholder="KEY_NAME" required autocomplete="off" />
-              </div>
-              <div>
-                <label for="secret-value">Secret value</label>
-                <input
-                  id="secret-value"
-                  type="password"
-                  placeholder="Secret value"
-                  required
-                  autocomplete="off"
-                  spellcheck="false"
-                  autocapitalize="off"
-                  autocorrect="off"
-                />
-              </div>
-              <button id="set-submit" type="submit" class="btn">Save Secret</button>
-            </form>
-          </section>
-
-          <section class="panel" aria-labelledby="import-title">
-            <div class="panel-head">
-              <h2 id="import-title">Import .env</h2>
-            </div>
-            <div class="import-grid">
-              <div>
-                <label for="env-file">From file</label>
-                <div class="inline-row stack-mobile">
-                  <input id="env-file" type="file" accept=".env,text/plain" />
-                  <button id="import-file" type="button" class="btn btn-secondary">Import File</button>
-                </div>
-              </div>
-              <div>
-                <label for="env-paste">Paste .env content</label>
-                <textarea
-                  id="env-paste"
-                  placeholder="API_KEY=..."
-                  autocomplete="off"
-                  spellcheck="false"
-                  autocapitalize="off"
-                  autocorrect="off"
-                ></textarea>
-                <button id="import-paste" type="button" class="btn">Import Pasted .env</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel" aria-labelledby="keys-title">
+          <section class="panel panel-keys" aria-labelledby="keys-title">
             <div class="panel-head">
               <h2 id="keys-title">Keys</h2>
               <p id="keys-count" class="meta">0 keys</p>
             </div>
-            <label for="keys-search" class="sr-only">Search keys</label>
-            <input id="keys-search" type="search" placeholder="Search keys" autocomplete="off" class="search" />
 
-            <div class="table-wrap">
+            <div class="table-wrap" role="region" aria-label="Secret keys list">
               <table>
                 <thead>
                   <tr>
                     <th>Key</th>
-                    <th>Value</th>
+                    <th>Masked Value</th>
                     <th>Action</th>
                   </tr>
                 </thead>
