@@ -4,9 +4,9 @@
 use std::path::Path;
 
 use chrono::Utc;
-use rusqlite::{Connection, params};
 #[cfg(test)]
 use rusqlite::OptionalExtension;
+use rusqlite::{Connection, params};
 
 use crate::crypto::{AadData, KEK, NONCE_SIZE, decrypt_value, encrypt_value, unwrap_dek, wrap_dek};
 use crate::error::CryptoError;
@@ -357,12 +357,12 @@ impl VaultDb {
                     kek_id: new_kek_id.to_string(),
                 };
 
-                let mut plaintext = decrypt_value(&dek, &record.nonce, &record.ciphertext, &aad_old)?;
+                let mut plaintext =
+                    decrypt_value(&dek, &record.nonce, &record.ciphertext, &aad_old)?;
                 let (new_nonce, new_ciphertext) = encrypt_value(&dek, &plaintext, &aad_new)?;
                 plaintext.zeroize();
                 let (new_wrap_nonce, new_wrapped_dek) = wrap_dek(new_kek, &dek, &aad_new)?;
-                let mut payload =
-                    Vec::with_capacity(new_wrap_nonce.len() + new_wrapped_dek.len());
+                let mut payload = Vec::with_capacity(new_wrap_nonce.len() + new_wrapped_dek.len());
                 payload.extend_from_slice(&new_wrap_nonce);
                 payload.extend_from_slice(&new_wrapped_dek);
 
@@ -504,8 +504,8 @@ fn set_meta_with_conn(conn: &Connection, key: &str, value: &str) -> Result<(), r
 #[cfg(test)]
 mod tests {
     use crate::crypto::{
-        AadData, decrypt_value, derive_kek_from_passphrase, encrypt_value, generate_dek,
-        unwrap_dek, wrap_dek, NONCE_SIZE,
+        AadData, NONCE_SIZE, decrypt_value, derive_kek_from_passphrase, encrypt_value,
+        generate_dek, unwrap_dek, wrap_dek,
     };
 
     use super::*;
@@ -732,8 +732,8 @@ mod tests {
         let (new_wrap_nonce, new_wrapped_dek) = stored.encrypted_dek.split_at(NONCE_SIZE);
         let unwrapped = unwrap_dek(&new_kek, new_wrap_nonce, new_wrapped_dek, &aad_new)
             .expect("unwrap rotated dek");
-        let plaintext =
-            decrypt_value(&unwrapped, &stored.nonce, &stored.ciphertext, &aad_new).expect("decrypt");
+        let plaintext = decrypt_value(&unwrapped, &stored.nonce, &stored.ciphertext, &aad_new)
+            .expect("decrypt");
         assert_eq!(plaintext, b"secret-value");
     }
 
@@ -747,10 +747,7 @@ mod tests {
             .expect("create duplicate default");
 
         let profiles = db.list_profiles().expect("list profiles");
-        assert_eq!(
-            profiles,
-            vec!["default".to_string(), "staging".to_string()]
-        );
+        assert_eq!(profiles, vec!["default".to_string(), "staging".to_string()]);
 
         assert!(db.delete_profile("staging").expect("delete staging"));
         assert!(!db.delete_profile("missing").expect("delete missing"));
