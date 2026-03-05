@@ -24,6 +24,9 @@ const el = {
   secretList: document.getElementById("secret-list"),
   keysCount: document.getElementById("keys-count"),
   keysSearch: document.getElementById("keys-search"),
+  statProfiles: document.getElementById("stat-profiles"),
+  statKeys: document.getElementById("stat-keys"),
+  statVisible: document.getElementById("stat-visible"),
   envFile: document.getElementById("env-file"),
   envPaste: document.getElementById("env-paste"),
   importFile: document.getElementById("import-file"),
@@ -51,7 +54,13 @@ function readErrorMessage(payload) {
 }
 
 function updateProfileChip() {
-  el.activeProfileChip.textContent = `Profile: ${state.profile}`;
+  el.activeProfileChip.textContent = state.profile;
+}
+
+function updateStats(visibleCount = state.secrets.length) {
+  el.statProfiles.textContent = String(state.profiles.length);
+  el.statKeys.textContent = String(state.secrets.length);
+  el.statVisible.textContent = String(visibleCount);
 }
 
 function setButtonBusy(button, busy) {
@@ -69,19 +78,10 @@ async function withButtonBusy(button, fn) {
 }
 
 function isTypingContext(target) {
-  if (!target) {
+  if (!target || !target.tagName) {
     return false;
   }
-  const tagName = target.tagName;
-  if (!tagName) {
-    return false;
-  }
-  return (
-    tagName === "INPUT" ||
-    tagName === "TEXTAREA" ||
-    tagName === "SELECT" ||
-    target.isContentEditable
-  );
+  return target.matches("input, textarea, select, [contenteditable='true']");
 }
 
 async function fetchToken() {
@@ -158,6 +158,7 @@ async function loadProfiles() {
   }
   renderProfileOptions();
   updateProfileChip();
+  updateStats();
 }
 
 function renderEmptyRow(message) {
@@ -182,15 +183,17 @@ function updateKeysCount(filteredCount) {
   const total = state.secrets.length;
   if (state.filter.trim()) {
     el.keysCount.textContent = `${filteredCount}/${total} keys`;
-    return;
+  } else {
+    el.keysCount.textContent = `${total} keys`;
   }
-  el.keysCount.textContent = `${total} keys`;
 }
 
 function renderSecrets() {
   el.secretList.innerHTML = "";
   const entries = filteredSecrets();
+
   updateKeysCount(entries.length);
+  updateStats(entries.length);
 
   if (state.secrets.length === 0) {
     renderEmptyRow("No keys yet. Add a secret or import a .env file.");
@@ -259,6 +262,7 @@ async function handleCreateProfile() {
     method: "POST",
     body: JSON.stringify({ name }),
   });
+
   el.profileName.value = "";
   state.profile = name;
   await loadProfiles();
@@ -276,6 +280,7 @@ async function handleDeleteProfile() {
   const data = await api(`/api/profiles/${encodeURIComponent(profile)}`, {
     method: "DELETE",
   });
+
   if (!data.deleted) {
     setMessage(`Profile ${profile} not found`, "info");
     return;
