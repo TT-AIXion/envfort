@@ -216,6 +216,10 @@ From `.codex/skills/design-spec.md` Section C:
 - `.github/workflows/release.yml` builds binaries for Linux/macOS/Windows, generates SHA-256 checksums, and attaches artifacts to GitHub Releases.
 - `workflow_dispatch` is also available for manual re-run against an existing release tag.
 
+## Release Handoff
+
+Use [RELEASE_HANDOFF_CHECKLIST.md](./RELEASE_HANDOFF_CHECKLIST.md) for the public release handoff steps covering `crates.io`, GitHub Releases, the Homebrew tap, and post-release verification.
+
 ## Automerge Operations
 
 - PRs are eligible only when all conditions are met:
