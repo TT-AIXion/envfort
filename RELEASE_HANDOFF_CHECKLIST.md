@@ -60,6 +60,10 @@ export TAG="v${VERSION}"
   ls -la /tmp/envfort-release
   cat /tmp/envfort-release/*.sha256
   ```
+- [ ] Confirm the asset names still match install docs.
+  - `envfort-macos` = macOS CLI binary
+  - `envfort-linux` = Linux CLI binary
+  - `envfort-windows.exe` = Windows CLI binary
 - [ ] Add or polish release notes if the auto-created release body is too thin.
   ```bash
   gh release edit "$TAG" --notes-file /tmp/envfort-release-notes.md
@@ -98,10 +102,40 @@ export TAG="v${VERSION}"
   cargo install envfort --locked --version "$VERSION"
   envfort --version
   ```
-- [ ] Confirm the GitHub Release binary runs.
+- [ ] Confirm the macOS GitHub Release binary verifies and runs.
   ```bash
-  chmod +x /tmp/envfort-release/envfort-macos
-  /tmp/envfort-release/envfort-macos --version
+  cd /tmp/envfort-release \
+    && shasum -a 256 -c envfort-macos.sha256 \
+    && chmod +x envfort-macos \
+    && ./envfort-macos --version
+  ```
+- [ ] Confirm the Linux GitHub Release binary verifies and runs on a Linux host.
+  ```bash
+  cd /tmp/envfort-release \
+    && sha256sum -c envfort-linux.sha256 \
+    && chmod +x envfort-linux \
+    && ./envfort-linux --version
+  ```
+- [ ] If Linux post-release smoke goes beyond `--version`, use a supported OS keyring backend or document the passphrase fallback before sign-off.
+  ```bash
+  export ENVFORT_PASSPHRASE='<release-smoke-passphrase>'
+  /tmp/envfort-release/envfort-linux init --profile release-smoke
+  ```
+- [ ] Confirm the Windows GitHub Release binary checksum, smoke test, and docs remain aligned.
+  ```powershell
+  $tag = if ($env:TAG) { $env:TAG } else { throw 'Set $env:TAG first, e.g. v0.1.0' }
+  $releaseDir = Join-Path $env:TEMP 'envfort-release'
+  New-Item -ItemType Directory -Force $releaseDir | Out-Null
+  gh release download $tag -R TT-AIXion/envfort -D $releaseDir
+  Set-Location $releaseDir
+  $expected = ((Get-Content .\envfort-windows.exe.sha256 -Raw).Trim() -split '\s+')[0].ToLower()
+  $actual = (Get-FileHash .\envfort-windows.exe -Algorithm SHA256).Hash.ToLower()
+  if ($expected -ne $actual) { throw "SHA256 mismatch: expected $expected actual $actual" }
+  .\envfort-windows.exe --version
+  ```
+- [ ] Confirm install docs still mention checksum verify, final command naming, and platform smoke steps.
+  ```bash
+  rg -n 'envfort-macos|envfort-linux|envfort-windows.exe|envfort.exe|install -m 0755|chmod \\+x|Get-FileHash|--version|sha256|ENVFORT_PASSPHRASE' README.md RELEASE_HANDOFF_CHECKLIST.md CRATES_IO_RELEASE_RUNBOOK_2026-03-06.md
   ```
 - [ ] Confirm the Homebrew install path works end-to-end.
   ```bash

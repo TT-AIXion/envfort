@@ -17,6 +17,10 @@ export VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
 - [ ] Active toolchain satisfies `rust-version = 1.87`.
 - [ ] Manifest metadata is current: `version`, `license`, `description`, `homepage`, `repository`, `readme`, `keywords`, `categories`.
 - [ ] README install line still matches crates.io flow: `cargo install envfort --locked`
+- [ ] README / release handoff install docs still describe the same manual-binary asset mapping: `envfort-macos` = macOS, `envfort-linux` = Linux, `envfort-windows.exe` = Windows.
+- [ ] README / release handoff install docs still show checksum verification plus `--version` smoke steps for manual binaries, with `chmod +x` on macOS/Linux when the executable bit is missing.
+- [ ] README manual install docs still show how the verified binary becomes the supported command name: `envfort` on macOS/Linux and `envfort.exe` on Windows.
+- [ ] README / release handoff install docs still carry the Linux keyring caveat: OS keyring backend expected by default, `ENVFORT_PASSPHRASE` fallback documented for headless/minimal hosts.
 - [ ] crates.io auth is ready: `CARGO_REGISTRY_TOKEN` in the environment or prior `cargo login`
 - [ ] If this is not the first release, owners look correct: `cargo owner --list "$CRATE"`
 - [ ] `Cargo.toml` keeps the package surface on the explicit include whitelist (`Cargo.toml`, `Cargo.lock`, `README.md`, `LICENSE`, `src/**`, `tests/**`).
@@ -26,7 +30,7 @@ Quick check:
 
 ```bash
 git ls-files --error-unmatch Cargo.lock
-rg -n '^version = "|^license = "|^description = "|^homepage = "|^repository = "|^readme = "|^keywords = |^categories = |^include = |cargo install envfort --locked' Cargo.toml README.md
+rg -n '^version = "|^license = "|^description = "|^homepage = "|^repository = "|^readme = "|^keywords = |^categories = |^include = |cargo install envfort --locked|envfort-macos|envfort-linux|envfort-windows.exe|envfort.exe|install -m 0755|chmod \\+x|Get-FileHash|--version|ENVFORT_PASSPHRASE|sha256' Cargo.toml README.md RELEASE_HANDOFF_CHECKLIST.md
 ```
 
 ## Dry-run
@@ -57,6 +61,12 @@ cargo publish --locked
 cargo install envfort --locked --version "$VERSION" --force
 envfort --version
 ```
+
+- [ ] Install docs still describe the same manual-binary contract called out in `RELEASE_HANDOFF_CHECKLIST.md`.
+  - Asset meanings: `envfort-macos`, `envfort-linux`, `envfort-windows.exe`
+  - Manual download notes: verify `.sha256`, run the platform binary with `--version`, then place it on `PATH` as `envfort` (macOS/Linux) or `envfort.exe` (Windows)
+  - Platform specifics: `chmod +x` on macOS/Linux if needed; Windows compares `Get-FileHash` with `envfort-windows.exe.sha256`
+  - Linux caveat: supported OS keyring backend by default, `ENVFORT_PASSPHRASE` fallback documented
 
 - [ ] Owners still look correct:
 

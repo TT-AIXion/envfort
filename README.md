@@ -39,7 +39,46 @@ brew install envfort
 
 ### GitHub Releases
 
-Download prebuilt binaries from Releases page and place `envfort` in your `PATH`.
+Download the prebuilt asset matching your platform from the Releases page, verify the checksum, smoke-test it, then copy/rename it into a directory on your `PATH` under the supported command name.
+
+| Asset | Meaning |
+|---|---|
+| `envfort-macos` | Standalone macOS CLI binary |
+| `envfort-linux` | Standalone Linux CLI binary |
+| `envfort-windows.exe` | Standalone Windows CLI binary |
+
+Minimum manual install flow:
+
+```bash
+# macOS
+shasum -a 256 -c envfort-macos.sha256
+chmod +x envfort-macos # if the download did not preserve the executable bit
+./envfort-macos --version
+install -m 0755 envfort-macos /usr/local/bin/envfort # or another directory already on PATH
+envfort --version
+
+# Linux
+sha256sum -c envfort-linux.sha256
+chmod +x envfort-linux # if the download did not preserve the executable bit
+./envfort-linux --version
+install -m 0755 envfort-linux /usr/local/bin/envfort # or another directory already on PATH
+envfort --version
+```
+
+```powershell
+# Windows (PowerShell)
+$expected = ((Get-Content .\envfort-windows.exe.sha256 -Raw).Trim() -split '\s+')[0].ToLower()
+$actual = (Get-FileHash .\envfort-windows.exe -Algorithm SHA256).Hash.ToLower()
+if ($expected -ne $actual) { throw "SHA256 mismatch: expected $expected actual $actual" }
+.\envfort-windows.exe --version
+New-Item -ItemType Directory -Force $env:USERPROFILE\bin | Out-Null
+Copy-Item .\envfort-windows.exe $env:USERPROFILE\bin\envfort.exe -Force
+& "$env:USERPROFILE\bin\envfort.exe" --version
+```
+
+Windows note: place the verified binary on `%PATH%` as `envfort.exe` (for example `%USERPROFILE%\bin\envfort.exe`).
+
+Linux note: the default KEK storage path expects a working OS keyring backend. On headless/minimal Linux hosts, use a supported keyring service or set `ENVFORT_PASSPHRASE` (optionally `ENVFORT_PASSPHRASE_SALT`) before `envfort init`.
 
 ## Usage
 
@@ -217,6 +256,7 @@ From `.codex/skills/design-spec.md` Section C:
 - Releases are created from Git tags matching `v*` (for example: `v1.2.3`).
 - `Cargo.lock` is tracked and kept in the published crate so CI, release builds, and `cargo install envfort --locked` stay aligned.
 - `.github/workflows/release.yml` builds binaries for Linux/macOS/Windows, generates SHA-256 checksums, and attaches artifacts to GitHub Releases.
+- GitHub Releases manual install docs assume: verify `.sha256` first, smoke-test the downloaded asset, then place it on `PATH` as `envfort` (macOS/Linux) or `envfort.exe` (Windows); macOS/Linux may need `chmod +x`, and Linux needs a working keyring backend (or `ENVFORT_PASSPHRASE` fallback).
 - `workflow_dispatch` is also available for manual re-run against an existing release tag.
 
 ## Release Handoff
