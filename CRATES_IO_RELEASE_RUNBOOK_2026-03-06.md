@@ -13,19 +13,20 @@ export VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
 
 - [ ] Clean tree: `git diff --quiet && git diff --cached --quiet`
 - [ ] Release commit is the intended `main` commit.
-- [ ] `Cargo.lock` exists and is committed.
+- [ ] `Cargo.lock` exists, is tracked, and matches the intended dependency graph: `git ls-files --error-unmatch Cargo.lock`
 - [ ] Active toolchain satisfies `rust-version = 1.87`.
 - [ ] Manifest metadata is current: `version`, `license`, `description`, `homepage`, `repository`, `readme`, `keywords`, `categories`.
 - [ ] README install line still matches crates.io flow: `cargo install envfort --locked`
 - [ ] crates.io auth is ready: `CARGO_REGISTRY_TOKEN` in the environment or prior `cargo login`
 - [ ] If this is not the first release, owners look correct: `cargo owner --list "$CRATE"`
-- [ ] `Cargo.toml` does not define `include` / `exclude`; review `cargo package --list --locked` output carefully before publish.
+- [ ] `Cargo.toml` keeps the package surface on the explicit include whitelist (`Cargo.toml`, `Cargo.lock`, `README.md`, `LICENSE`, `src/**`, `tests/**`).
 - [ ] Do not use `--allow-dirty` or `--no-verify` for a real release.
 
 Quick check:
 
 ```bash
-rg -n '^version = "|^license = "|^description = "|^homepage = "|^repository = "|^readme = "|^keywords = |^categories = |cargo install envfort --locked' Cargo.toml README.md
+git ls-files --error-unmatch Cargo.lock
+rg -n '^version = "|^license = "|^description = "|^homepage = "|^repository = "|^readme = "|^keywords = |^categories = |^include = |cargo install envfort --locked' Cargo.toml README.md
 ```
 
 ## Dry-run

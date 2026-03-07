@@ -14,9 +14,13 @@ export TAG="v${VERSION}"
   git fetch origin --tags
   git log --oneline origin/main -n 5
   ```
+- [ ] Confirm `Cargo.lock` is tracked for the binary-crate `--locked` path.
+  ```bash
+  git ls-files --error-unmatch Cargo.lock
+  ```
 - [ ] Confirm release metadata is aligned across the manifest and docs.
   ```bash
-  rg -n '^version = "|cargo install envfort|brew install envfort|Release Flow|Release Process' Cargo.toml README.md CONTRIBUTING.md
+  rg -n '^version = "|^include = |cargo install envfort|brew install envfort|Release Flow|Release Process|Cargo.lock' Cargo.toml README.md CONTRIBUTING.md
   ```
 - [ ] Run the release gates from the release commit.
   ```bash
@@ -24,6 +28,7 @@ export TAG="v${VERSION}"
   cargo clippy --all-targets -- -D warnings
   cargo test
   cargo build --release --locked
+  cargo package --list --locked
   cargo package --locked
   cargo publish --dry-run --locked
   ```

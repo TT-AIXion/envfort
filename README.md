@@ -28,6 +28,8 @@ Secrets are encrypted at rest, stored in SQLite, KEK-protected in OS keychain, a
 cargo install envfort --locked
 ```
 
+`envfort` ships a checked-in `Cargo.lock` for the published binary crate, so `--locked` is the supported install path.
+
 ### Homebrew
 
 ```bash
@@ -213,6 +215,7 @@ From `.codex/skills/design-spec.md` Section C:
 ## Release Process (Tag-based)
 
 - Releases are created from Git tags matching `v*` (for example: `v1.2.3`).
+- `Cargo.lock` is tracked and kept in the published crate so CI, release builds, and `cargo install envfort --locked` stay aligned.
 - `.github/workflows/release.yml` builds binaries for Linux/macOS/Windows, generates SHA-256 checksums, and attaches artifacts to GitHub Releases.
 - `workflow_dispatch` is also available for manual re-run against an existing release tag.
 

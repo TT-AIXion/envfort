@@ -18,6 +18,8 @@ cargo build
 cargo install --path . --locked
 ```
 
+`Cargo.lock` is intentionally tracked for this binary crate. Keep local `--locked` checks aligned with the committed lockfile.
+
 ## Local Quality Gates
 
 Run before opening PR:
