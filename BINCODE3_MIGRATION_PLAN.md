@@ -2,6 +2,11 @@
 
 目的: `bincode` 1.x の `serialize` / `deserialize` 直呼びを、config ベースの新 API へ置換する。今回は計画のみ。コード変更なし。
 
+Status sync 2026-03-10:
+- Dependabot PR `#7` は re-review 後も as-is merge 不可。
+- release-workflow 側の Dependabot PR `#4` / `#3` は同日 merge 済み。
+- この文書は `#7` の manual migration planning 専用として維持する。
+
 ## 0. 先に押さえる前提
 
 - 現状依存: `Cargo.toml:18` は `bincode = "1"`。

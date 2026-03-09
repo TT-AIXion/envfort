@@ -2,6 +2,10 @@
 
 対象: Dependabot PR `#7` (`bincode` `1` -> `3`)
 
+Status sync 2026-03-10:
+- PR `#7` は re-review 後も verdict unchanged。
+- as-is merge 不可。manual migration 別PRのみ。
+
 前提:
 - 今回は分析のみ。repo 本体コード変更なし。
 - ローカル確認は `rg` 中心。

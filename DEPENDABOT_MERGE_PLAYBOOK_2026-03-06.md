@@ -4,53 +4,47 @@
 - 根拠: `DEPENDABOT_TRIAGE_2026-03-06.md` と `.github/workflows/{automerge,ci,release}.yml`。
 - 事前に `gh auth status` を通す。
 - `#3` と `#4` は同時 merge しない。`release.yml` の故障点切り分け優先。
+- 2026-03-10 status sync: `#4` → `#3` の順で re-review / merge 完了。open PR queue は `#7` manual migration のみ。
+- ただし `#4` / `#3` merge 後の CI 確認 / release rehearsal は、この playbook の post-merge verification として別残件。
 
 ## Current Status
 
 - merged 2026-03-07: `#5`, `#6`
-- reviewed and deferred: `#4`, `#3`
-- merge しない: `#7`
+- merged 2026-03-10 after re-review: `#4`, `#3`
+- merge しない / manual migration only: `#7`
 
-## Next Queue
+## Remaining Queue
 
-1. `#4` `build(deps): bump actions/upload-artifact from 4 to 7`
-   - 対象: `release.yml` build 側 `Upload artifact`。
-   - 理由: release 専用。`#3` より先に fault isolation。
-   - 状態: reviewed/deferred。release rehearsal の近辺で再開。
-2. `#3` `build(deps): bump actions/download-artifact from 4 to 8`
-   - 対象: `release.yml` publish 側 `Download artifacts` / `Verify checksums`。
-   - 理由: 最も release 破壊しやすい。最後。
-   - 状態: reviewed/deferred。`#4` の確認後に判断。
-3. `#7` `build(deps): update bincode requirement from 1 to 3`
+1. `#7` `build(deps): update bincode requirement from 1 to 3`
    - 対応: merge しない。manual migration PR へ切替。
+   - 状態: 2026-03-10 re-review 後も blocked。as-is merge 不可。
 
-## Pre-merge Checks Per PR
+## Historical Checks / Remaining Check
 
 ### `#4`
 - `gh pr checks 4`
 - `gh pr diff 4 --name-only`
-- 確認点: `release.yml` の `actions/upload-artifact` 更新だけ / `#6` merge 後の develop CI green / rollback 担当者を決める
+- 実施結果: re-review 後に 2026-03-10 merge 済み
 
 ### `#3`
 - `gh pr checks 3`
 - `gh pr diff 3 --name-only`
-- 確認点: `release.yml` の `actions/download-artifact` 更新だけ / `#4` merge 後の develop CI green / disposable tag rehearsal の段取りを先に持つ
+- 実施結果: `#4` 後に re-review し、2026-03-10 merge 済み
 
 ### `#7`
 - `gh pr checks 7`
 - `gh pr diff 7 --name-only`
 - 確認点: CI failure 継続なら merge 禁止 / `rg -n "bincode::serialize|bincode::deserialize|bincode = \"1\"" Cargo.toml src tests`
+- 現況: re-review 後も merge 禁止。manual migration 別PRのみ。
 
-## Merge Commands (`gh` CLI)
+## Command Notes (`gh` CLI)
 
-再開時のみ `#4` `#3`:
+`#4` / `#3`:
 
 ```bash
-gh pr view 4 --json number,title,mergeable,reviewDecision
-gh pr merge 4 --squash --delete-branch
-
-gh pr view 3 --json number,title,mergeable,reviewDecision
-gh pr merge 3 --squash --delete-branch
+# 2026-03-10 merge 済み
+gh pr view 4 --json number,title,mergeable,reviewDecision,mergedAt
+gh pr view 3 --json number,title,mergeable,reviewDecision,mergedAt
 ```
 
 保留 `#7`:
@@ -62,6 +56,7 @@ gh pr view 7 --json number,title,mergeable,reviewDecision
 
 ## Post-merge Verification Checklist
 
+- この batch の `#4` / `#3` は 2026-03-10 merge 済み。
 - 各 merge 後:
   - `gh run list --branch develop --limit 5`
   - 直近 `CI` が success

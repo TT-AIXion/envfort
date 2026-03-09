@@ -2,6 +2,11 @@
 
 目的: Dependabot PR `#7` follow-up。`#7` は merge せず、manual migration PR で処理。
 
+Status sync 2026-03-10:
+- PR `#7` は re-review 後も blocked。manual migration 別PR方針のまま。
+- GitHub PR status sync 上、PR `#4` / `#3` は merge 済み。open PR queue として残る Dependabot follow-up はこの tasklist のみ。
+- ただし `#4` / `#3` merge 後の CI / release rehearsal 記録は playbook 側の別残件。
+
 固定判断:
 - Dependabot PR `#7` の提案先 `bincode 3.0.0` は reject。unmaintained / as-is merge 不可。
 - target は maintained `bincode 2.x` のみ。`serde` feature + `bincode::config::legacy()` 前提。

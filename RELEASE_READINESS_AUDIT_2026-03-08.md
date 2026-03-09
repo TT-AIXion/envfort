@@ -97,13 +97,14 @@ Assessment: release 前 blocker。
 
 ## Appendix — Dependabot release-workflow PRs
 
-Dependabot `#3` / `#4` の defer 方針自体は、既存の triage / playbook と整合しています (`DEPENDABOT_TRIAGE_2026-03-06.md`, `DEPENDABOT_MERGE_PLAYBOOK_2026-03-06.md`)。release-readiness の主線ではないため、本監査では appendix 扱いに留めます。
+Dependabot `#4` / `#3` は re-review 後に 2026-03-10 merge 済みです。GitHub PR queue 上では release-workflow 系の open Dependabot PR はなく、未解決 PR は `bincode` `#7` の manual migration 側です (`DEPENDABOT_TRIAGE_2026-03-06.md`, `DEPENDABOT_MERGE_PLAYBOOK_2026-03-06.md`, `BINCODE3_MIGRATION_PLAN.md`)。ただし `#4` / `#3` merge 後の CI 確認 / release rehearsal 完了記録は別残作業として残り得ます。release-readiness の主線ではないため、本監査では appendix 扱いに留めます。
 
 要点だけまとめると:
 
-- `#4` を先、`#3` を後に扱う順序は妥当
-- 通常 CI だけでは release workflow 変更の安全性は閉じない
-- merge 前に rehearsal 前提で判断すべき
+- `#4` を先、`#3` を後に扱う順序で 2026-03-10 に merge 完了
+- 通常 CI だけでは release workflow 変更の安全性は閉じきれない、という整理自体は有効
+- open Dependabot PR は `#7` manual migration のみ
+- 別途 `#4` / `#3` post-merge verification 記録は未了なら残作業
 
 ## Release blockers vs nice-to-have
 
