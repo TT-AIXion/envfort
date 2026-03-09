@@ -18,15 +18,18 @@ cargo build
 cargo install --path . --locked
 ```
 
+`Cargo.lock` is intentionally tracked for this binary crate. Keep local `--locked` checks aligned with the committed lockfile.
+
 ## Local Quality Gates
 
 Run before opening PR:
 
 ```bash
 cargo fmt
+cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo build --release
+cargo build --release --locked
 ```
 
 ## Testing Guidance
@@ -46,6 +49,35 @@ cargo build --release
    - security impact (if any)
    - verification commands + results
 5. Ensure CI is green on Linux and macOS.
+
+## Issue and PR Flow
+
+1. Open a GitHub Issue first for bugs or feature requests (use issue templates).
+2. For larger or breaking changes, align scope in the Issue before implementation.
+3. Open a PR using `.github/pull_request_template.md`.
+4. Link the Issue in the PR description (for example: `Closes #123`).
+
+## Release Flow
+
+1. Merge approved changes into `develop`.
+2. Prepare the release commit (typically on `main` after branch promotion).
+3. Create and push a version tag `v*` on the release commit.
+4. GitHub Actions `release.yml` builds Linux/macOS/Windows binaries and publishes checksums to GitHub Releases.
+
+## Automerge Label Process
+
+Automerge is fail-safe and opt-in:
+
+1. Add `automerge` label to a ready PR.
+2. Ensure PR is not draft.
+3. Wait for `CI` success.
+4. `automerge.yml` enables GitHub auto-merge only when all policy checks pass.
+5. If any condition is unmet, automerge is not enabled.
+
+## Community and Security Expectations
+
+- Follow `CODE_OF_CONDUCT.md` in all project interactions.
+- Do not report vulnerabilities in public issues; use `SECURITY.md` reporting guidance.
 
 ## Security
 

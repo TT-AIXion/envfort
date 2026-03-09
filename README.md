@@ -28,6 +28,8 @@ Secrets are encrypted at rest, stored in SQLite, KEK-protected in OS keychain, a
 cargo install envfort --locked
 ```
 
+`envfort` ships a checked-in `Cargo.lock` for the published binary crate, so `--locked` is the supported install path.
+
 ### Homebrew
 
 ```bash
@@ -37,7 +39,46 @@ brew install envfort
 
 ### GitHub Releases
 
-Download prebuilt binaries from Releases page and place `envfort` in your `PATH`.
+Download the prebuilt asset matching your platform from the Releases page, verify the checksum, smoke-test it, then copy/rename it into a directory on your `PATH` under the supported command name.
+
+| Asset | Meaning |
+|---|---|
+| `envfort-macos` | Standalone macOS CLI binary |
+| `envfort-linux` | Standalone Linux CLI binary |
+| `envfort-windows.exe` | Standalone Windows CLI binary |
+
+Minimum manual install flow:
+
+```bash
+# macOS
+shasum -a 256 -c envfort-macos.sha256
+chmod +x envfort-macos # if the download did not preserve the executable bit
+./envfort-macos --version
+install -m 0755 envfort-macos /usr/local/bin/envfort # or another directory already on PATH
+envfort --version
+
+# Linux
+sha256sum -c envfort-linux.sha256
+chmod +x envfort-linux # if the download did not preserve the executable bit
+./envfort-linux --version
+install -m 0755 envfort-linux /usr/local/bin/envfort # or another directory already on PATH
+envfort --version
+```
+
+```powershell
+# Windows (PowerShell)
+$expected = ((Get-Content .\envfort-windows.exe.sha256 -Raw).Trim() -split '\s+')[0].ToLower()
+$actual = (Get-FileHash .\envfort-windows.exe -Algorithm SHA256).Hash.ToLower()
+if ($expected -ne $actual) { throw "SHA256 mismatch: expected $expected actual $actual" }
+.\envfort-windows.exe --version
+New-Item -ItemType Directory -Force $env:USERPROFILE\bin | Out-Null
+Copy-Item .\envfort-windows.exe $env:USERPROFILE\bin\envfort.exe -Force
+& "$env:USERPROFILE\bin\envfort.exe" --version
+```
+
+Windows note: place the verified binary on `%PATH%` as `envfort.exe` (for example `%USERPROFILE%\bin\envfort.exe`).
+
+Linux note: the default KEK storage path expects a working OS keyring backend. On headless/minimal Linux hosts, use a supported keyring service or set `ENVFORT_PASSPHRASE` (optionally `ENVFORT_PASSPHRASE_SALT`) before `envfort init`.
 
 ## Usage
 
@@ -197,6 +238,38 @@ From `.codex/skills/design-spec.md` Section C:
 3. "LLM/AI agent isolation requires OS boundary (separate user/container)."
 4. "Environment variables are visible via `/proc/<pid>/environ` during process lifetime."
 5. "Browser-mediated attacks (DNS rebinding/CSRF) apply when Web UI is active."
+
+## Project Governance
+
+- Community standards are defined in `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1 based).
+- Ownership is defined in `.github/CODEOWNERS` (`@TT-AIXion`).
+- Contributions are guided by issue forms and pull request templates in `.github/`.
+
+## Support
+
+- Bug reports and feature requests: GitHub Issues (use templates).
+- Usage questions and general support: GitHub Discussions.
+- Security vulnerabilities: do **not** open public Issues; follow `SECURITY.md` and the security policy channel.
+
+## Release Process (Tag-based)
+
+- Releases are created from Git tags matching `v*` (for example: `v1.2.3`).
+- `Cargo.lock` is tracked and kept in the published crate so CI, release builds, and `cargo install envfort --locked` stay aligned.
+- `.github/workflows/release.yml` builds binaries for Linux/macOS/Windows, generates SHA-256 checksums, and attaches artifacts to GitHub Releases.
+- GitHub Releases manual install docs assume: verify `.sha256` first, smoke-test the downloaded asset, then place it on `PATH` as `envfort` (macOS/Linux) or `envfort.exe` (Windows); macOS/Linux may need `chmod +x`, and Linux needs a working keyring backend (or `ENVFORT_PASSPHRASE` fallback).
+- `workflow_dispatch` is also available for manual re-run against an existing release tag.
+
+## Release Handoff
+
+Use [RELEASE_HANDOFF_CHECKLIST.md](./RELEASE_HANDOFF_CHECKLIST.md) for the public release handoff steps covering `crates.io`, GitHub Releases, the Homebrew tap, and post-release verification.
+
+## Automerge Operations
+
+- PRs are eligible only when all conditions are met:
+  - `automerge` label is present
+  - PR is not draft
+  - latest `CI` workflow is successful
+- `.github/workflows/automerge.yml` enables GitHub auto-merge only when policy checks pass.
 
 ## Contributing
 

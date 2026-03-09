@@ -14,16 +14,34 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Run tests
-        run: cargo test
+      - name: Run fmt check
+        run: cargo fmt --check
 
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Run tests
+        run: cargo test
+
+      - name: Install cargo-audit (best effort)
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit (best effort)
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: |
+          if command -v cargo-audit >/dev/null 2>&1; then
+            cargo audit
+          else
+            echo "cargo-audit not available, skipping"
+          fi
+
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --locked

@@ -8,88 +8,183 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
-    <main class="layout">
-      <header class="hero">
-        <h1>envfort</h1>
-        <p class="subtitle">Local write-only secret vault UI</p>
+    <main class="dashboard">
+      <header class="panel dashboard-header" aria-labelledby="dashboard-title">
+        <div>
+          <p class="eyebrow">envfort</p>
+          <h1 id="dashboard-title">Secrets Dashboard</h1>
+          <p class="subtitle">Simple, fast control panel for profiles and write-only secrets.</p>
+        </div>
+        <div class="header-session">
+          <p class="status-caption">Connection</p>
+          <p id="session-status" class="session-pill" data-state="pending">Connecting…</p>
+        </div>
       </header>
 
-      <section class="card" aria-labelledby="session-title">
-        <h2 id="session-title">Session</h2>
-        <p id="session-status">Connecting…</p>
+      <section class="kpi-grid" aria-label="Dashboard overview">
+        <article class="panel kpi-card">
+          <p class="kpi-label">Active profile</p>
+          <p id="active-profile-chip" class="kpi-value">default</p>
+        </article>
+        <article class="panel kpi-card">
+          <p class="kpi-label">Profiles</p>
+          <p id="stat-profiles" class="kpi-value">0</p>
+        </article>
+        <article class="panel kpi-card">
+          <p class="kpi-label">Keys</p>
+          <p id="stat-keys" class="kpi-value">0</p>
+        </article>
+        <article class="panel kpi-card">
+          <p class="kpi-label">Visible</p>
+          <p id="stat-visible" class="kpi-value">0</p>
+        </article>
       </section>
 
-      <section class="card" aria-labelledby="profile-title">
-        <h2 id="profile-title">Profiles</h2>
-        <div class="row">
-          <label for="profile-select">Active profile</label>
-          <select id="profile-select"></select>
-          <button id="refresh-secrets" type="button">Refresh</button>
+      <section class="panel status-panel" aria-labelledby="status-title" aria-live="polite">
+        <div class="panel-head">
+          <h2 id="status-title">System status</h2>
         </div>
-        <div class="row stack-mobile">
-          <input id="profile-name" type="text" placeholder="new-profile" autocomplete="off" />
-          <button id="profile-create" type="button">Create</button>
-          <button id="profile-delete" type="button" class="danger">Delete Active</button>
-        </div>
-      </section>
-
-      <section class="card" aria-labelledby="set-title">
-        <h2 id="set-title">Set Secret</h2>
-        <form id="set-form" autocomplete="off">
-          <div class="row stack-mobile">
-            <input id="secret-key" type="text" placeholder="KEY_NAME" required autocomplete="off" />
-            <input
-              id="secret-value"
-              type="password"
-              placeholder="Secret value"
-              required
-              autocomplete="off"
-              spellcheck="false"
-              autocapitalize="off"
-              autocorrect="off"
-            />
-            <button type="submit">Save</button>
+        <p id="message" class="status" data-level="info">Status: Preparing dashboard…</p>
+        <dl class="status-meta">
+          <div>
+            <dt>Authentication</dt>
+            <dd id="session-auth" data-state="pending">Waiting for token</dd>
           </div>
-        </form>
+          <div>
+            <dt>API health</dt>
+            <dd id="session-health" data-state="pending">Checking</dd>
+          </div>
+        </dl>
       </section>
 
-      <section class="card" aria-labelledby="import-title">
-        <h2 id="import-title">Import .env</h2>
-        <div class="row stack-mobile">
-          <input id="env-file" type="file" accept=".env,text/plain" />
-          <button id="import-file" type="button">Import File</button>
+      <section class="panel quick-panel" aria-labelledby="quick-actions-title">
+        <div class="panel-head">
+          <h2 id="quick-actions-title">Quick actions</h2>
         </div>
-        <textarea
-          id="env-paste"
-          placeholder="KEY=value"
-          autocomplete="off"
-          spellcheck="false"
-          autocapitalize="off"
-          autocorrect="off"
-        ></textarea>
-        <div class="row">
-          <button id="import-paste" type="button">Import Pasted .env</button>
+
+        <div class="quick-actions-grid">
+          <form id="set-form" autocomplete="off" class="quick-add-form">
+            <h3>Quick add secret</h3>
+            <div class="quick-add-fields">
+              <div>
+                <label for="secret-key">Secret key</label>
+                <input id="secret-key" type="text" placeholder="API_KEY" required autocomplete="off" />
+              </div>
+              <div>
+                <label for="secret-value">Secret value</label>
+                <input
+                  id="secret-value"
+                  type="password"
+                  placeholder="Write-only value"
+                  required
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off"
+                />
+              </div>
+            </div>
+            <button id="set-submit" type="submit" class="btn">Add Secret</button>
+          </form>
+
+          <div class="quick-box">
+            <h3>Search</h3>
+            <label for="keys-search">Search keys</label>
+            <input id="keys-search" type="search" placeholder="Filter by key name" autocomplete="off" class="search" />
+          </div>
+
+          <div class="quick-box">
+            <h3>Refresh</h3>
+            <p class="help">Reload key metadata for the selected profile.</p>
+            <button id="refresh-secrets" type="button" class="btn btn-secondary">Refresh Keys</button>
+          </div>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="list-title">
-        <h2 id="list-title">Keys</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Value</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="secret-list"></tbody>
-        </table>
-      </section>
+      <div class="layout-grid">
+        <section class="panel panel-keys" aria-labelledby="keys-title">
+          <div class="panel-head">
+            <h2 id="keys-title">Secrets</h2>
+            <p id="keys-count" class="meta">0 keys</p>
+          </div>
 
-      <section class="card" aria-live="polite">
-        <h2>Status</h2>
-        <p id="message"></p>
-      </section>
+          <div class="table-wrap" role="region" aria-label="Secret keys list">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Masked Value</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="secret-list"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel" aria-labelledby="profiles-title">
+            <div class="panel-head">
+              <h2 id="profiles-title">Profiles</h2>
+            </div>
+            <p class="help">Profiles isolate secrets by environment.</p>
+
+            <label for="profile-select">Active profile</label>
+            <select id="profile-select" aria-label="Active profile"></select>
+
+            <label for="profile-name" class="spacer-top">Create profile</label>
+            <div class="inline-row stack-mobile">
+              <input id="profile-name" type="text" placeholder="staging" autocomplete="off" />
+              <button id="profile-create" type="button" class="btn">Create &amp; Switch</button>
+            </div>
+
+            <div class="danger-zone" role="group" aria-labelledby="danger-zone-title">
+              <p id="danger-zone-title" class="danger-label">Danger: delete profile</p>
+              <p class="danger-copy">This permanently deletes the selected profile and all keys in it.</p>
+              <button id="profile-delete" type="button" class="btn btn-danger">Delete Active Profile</button>
+              <p id="profile-danger-hint" class="danger-hint">The default profile is protected from deletion.</p>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="import-title">
+            <div class="panel-head">
+              <h2 id="import-title">Import .env</h2>
+            </div>
+            <div class="import-grid">
+              <div>
+                <label for="env-file">From file</label>
+                <div class="inline-row stack-mobile">
+                  <input id="env-file" type="file" accept=".env,text/plain" />
+                  <button id="import-file" type="button" class="btn btn-secondary">Import File</button>
+                </div>
+              </div>
+              <div>
+                <label for="env-paste">Paste .env content</label>
+                <textarea
+                  id="env-paste"
+                  placeholder="DATABASE_URL=..."
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off"
+                ></textarea>
+                <button id="import-paste" type="button" class="btn">Import Pasted .env</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="shortcuts-title">
+            <div class="panel-head">
+              <h2 id="shortcuts-title">Shortcuts</h2>
+            </div>
+            <ul class="shortcut-list">
+              <li><kbd>n</kbd> focus key input</li>
+              <li><kbd>/</kbd> focus key search</li>
+              <li><kbd>⌘/Ctrl + Enter</kbd> save secret value</li>
+            </ul>
+          </section>
+        </aside>
+      </div>
     </main>
 
     <script type="module" src="/app.js"></script>

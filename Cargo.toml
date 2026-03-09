@@ -10,6 +10,14 @@ homepage = "https://github.com/TT-AIXion/envfort"
 readme = "README.md"
 keywords = ["secrets", "vault", "keychain", "cli", "encryption"]
 categories = ["command-line-utilities", "cryptography"]
+include = [
+  "/Cargo.toml",
+  "/Cargo.lock",
+  "/README.md",
+  "/LICENSE",
+  "/src/**",
+  "/tests/**",
+]
 
 [dependencies]
 aes-gcm-siv = "0.11.1"
