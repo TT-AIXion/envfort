@@ -28,7 +28,7 @@ chrono = "0.4.44"
 clap = { version = "4.5.60", features = ["derive"] }
 getrandom = "0.4.2"
 keyring = "3.6.3"
-libc = "0.2.182"
+libc = "0.2.183"
 rand = "0.10.0"
 rpassword = "7.4.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
